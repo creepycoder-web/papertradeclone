@@ -1,0 +1,6 @@
+telethon>=1.34
+httpx>=0.27
+solders>=0.29
+
+[dev]
+pytest>=8

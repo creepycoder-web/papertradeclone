@@ -1,0 +1,47 @@
+{
+  "note": "CANONICAL PARSER FIXTURE. A verbatim capture from @MooDengPresidentCallers, chosen because it exercises the three rules that matter for token extraction: an explicit CA: field, a two-character ticker ($AI) that must NOT be inferred as a mint, and a promo footer full of decoy text. The expected_mint below is the ONLY acceptable extraction; anything inferred from the ticker is a failure.",
+  "channel": "MooDengPresidentCallers",
+  "expected_symbol": "AI",
+  "expected_mint": "A5MdMEt99PzbYKsfPaQ5Ee1jFZEsYu3zBvdpDdyX2sXQ",
+  "expected_ambiguous": false,
+  "expected_venue_hint": null,
+  "must_not_infer_mint_from": "$AI",
+  "messages": [
+    {
+      "id": "canonical",
+      "description": "The canonical signal. CA: is the single address-shaped string, and $AI is a two-character ticker.",
+      "text": "⚡️[SOL]  - Anti Intelligence ｜ $AI\n\n🎯 CA: A5MdMEt99PzbYKsfPaQ5Ee1jFZEsYu3zBvdpDdyX2sXQ\n\n┏ 🧢 Market Cap:   $20K ｜🔝$53.3K \n┣ ⌛️ Pool Age:  55s [-59%] \n┣ 💧 Liquid:  $11K [36.6 SOL]\n┗ 🚀 Volume: $40.7k\n\n┏ 🦅 DEX:  Paid❌ Ads❌ 0⚡\n┣ ⚡ Scans:  8\n┣ 👫 Holders:  354 ｜ 💪 TOP 10: 19.91%\n┣ 📦 Bundles:  11 ｜ 52% → 6%\n┗ 🔥🔥🔥Available on PREMIUM CHANNEL | Owner @k_vlde\n\n┏ 🧑‍💻 Dev:  167.4 SOL ｜ 0%\n┗ Bundled:  21% 🤍 ｜ Sold:  22%\n\nAVE ｜ GMGN (BOT) ｜ GMGN (WEB) ｜ AXIOM ｜ BASED (BOT) ｜ BASED (WEB) ｜ TROJAN ｜ BLOOM #AI\n",
+      "expected_mint": "A5MdMEt99PzbYKsfPaQ5Ee1jFZEsYu3zBvdpDdyX2sXQ",
+      "expected_ambiguous": false
+    },
+    {
+      "id": "ca_wins_over_footer_address",
+      "description": "The labelled CA: field outranks a second real address appearing in the footer. Before this rule the signal was declared AMBIGUOUS and silently DROPPED - a correctly-formatted signal lost to an incidental mention.",
+      "expected_mint": "A5MdMEt99PzbYKsfPaQ5Ee1jFZEsYu3zBvdpDdyX2sXQ",
+      "expected_ambiguous": false,
+      "text": "🎯 CA: A5MdMEt99PzbYKsfPaQ5Ee1jFZEsYu3zBvdpDdyX2sXQ\n$AI\nalso watching 6uPEdkU2xPg1iyfLzV1ssUwvve8nndA2sd6nBFrb1n58\n"
+    },
+    {
+      "id": "no_label_two_addresses",
+      "description": "With no labelled field and two distinct addresses, nothing identifies which token is meant. Must stay AMBIGUOUS: the CA: rule is about an explicit field, not a licence to guess.",
+      "expected_mint": null,
+      "expected_ambiguous": true,
+      "text": "$X\nA5MdMEt99PzbYKsfPaQ5Ee1jFZEsYu3zBvdpDdyX2sXQ\n6uPEdkU2xPg1iyfLzV1ssUwvve8nndA2sd6nBFrb1n58\n"
+    },
+    {
+      "id": "label_names_two_mints",
+      "description": "A labelled field naming two distinct mints disambiguates nothing, so nothing can be chosen.",
+      "expected_mint": null,
+      "expected_ambiguous": true,
+      "text": "CA: A5MdMEt99PzbYKsfPaQ5Ee1jFZEsYu3zBvdpDdyX2sXQ or 6uPEdkU2xPg1iyfLzV1ssUwvve8nndA2sd6nBFrb1n58\n",
+      "resolved_via": "no-label fallback path"
+    },
+    {
+      "id": "ticker_only",
+      "description": "A narrative post with a ticker and figures but no contract address. Not a token signal.",
+      "expected_mint": null,
+      "expected_ambiguous": false,
+      "text": "🔥🔥🔥 Anti Intelligence ｜ $AI\n\n#AI 1.4X 🚀 MC：$19.5k 🔜 $26.4k\n\n💦GMGN.AI (WEB) | GMGN.AI (BOT) | Trojan | AXIOM\n"
+    }
+  ]
+}

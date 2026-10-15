@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: autopaper
+Version: 3.0.0
+Summary: MEMEBOT V3 - Solana memecoin bot on the V3-C strategy. PAPER by default; REAL is operator-armed from Telegram only.
+Requires-Python: >=3.11
+Requires-Dist: telethon>=1.34
+Requires-Dist: httpx>=0.27
+Requires-Dist: solders>=0.29
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
