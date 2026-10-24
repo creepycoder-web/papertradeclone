@@ -285,13 +285,21 @@ def tradeable(size: PositionSize, *, available_cash_usd: Optional[float] = None)
         return False, "account equity is zero; nothing to size"
     if size.position_usd <= 0:
         return False, "computed position size is zero; nothing to size"
-    if (
-        available_cash_usd is not None
-        and available_cash_usd < size.position_usd
-    ):
+    # THE CASH TEST IS AGAINST THE CASH THE POSITION CONSUMES, which is the
+    # notional PLUS the entry fee -- ``PaperAccount.register_position`` debits
+    # ``notional * (1 + fee)``. Testing the notional alone let a size equal to
+    # the whole remaining balance clear this guard, and cash then went negative
+    # by exactly the fee -- at which point ``register_position`` voids the
+    # position into ``PositionStatus.ERROR`` rather than this function refusing
+    # it here, with a readable reason.
+    # Every other hard cap in this system is already enforced against the cash
+    # a position consumes; this one was not.
+    required = size.position_usd + max(0.0, size.estimated_fee_usd)
+    if available_cash_usd is not None and available_cash_usd < required:
         return (
             False,
             f"available ${available_cash_usd:,.6f} is below the required "
-            f"${size.position_usd:,.6f}",
+            f"${required:,.6f} (${size.position_usd:,.6f} notional plus the "
+            f"${size.estimated_fee_usd:,.6f} entry fee the position consumes)",
         )
     return True, "size is placeable"

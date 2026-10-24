@@ -324,9 +324,11 @@ def realize(
     """
     Settle a simulated position from its two FILLS.
 
-    ``net = exit_proceeds - entry_cost - fees - modeled_costs``, all in the
-    quote asset. The observed mark is passed in for the record and is NOT an
-    input to the arithmetic - it is stored so the two can be compared later.
+    ``net = exit_proceeds - entry_cost - fees - network_costs - other_costs``,
+    all in the quote asset, and every term on the right is reported on the
+    result with the value that was actually charged. The observed mark is passed
+    in for the record and is NOT an input to the arithmetic - it is stored so
+    the two can be compared later.
     """
     model = model or FillModel()
     now = time.time() if now is None else now
@@ -343,17 +345,22 @@ def realize(
     # on both, so charging both is correct -- but they must be the same unit, and
     # the model's own field is declared in LAMPORTS. Adding it raw would charge
     # 10^9x the intended amount (silently, and only once someone sets it).
-    costs = position.network_costs_quote + model.network_cost_sol
+    network_costs = position.network_costs_quote + model.network_cost_sol
+    # ``other_costs_quote`` IS SUBTRACTED, and was not.
+    #
+    # It was recorded on the result while being left out of ``net``, so the
+    # settlement identity every consumer asserts --
+    # ``net == gross - trading_fees - network_costs - other_costs`` -- only held
+    # because the field is zero by default. The same was true of the EXIT
+    # network leg, which was charged to ``net`` but reported as the ENTRY leg
+    # alone. Both are now charged once and reported as exactly what was charged,
+    # so the identity closes for any value rather than only for zero.
+    other_costs = position.other_costs_quote
 
     gross = exit_proceeds - entry_cost
-    net = gross - fees - costs
+    net = gross - fees - network_costs - other_costs
 
     bankroll_before = position.bankroll_before
-    usd_per_token = (
-        float(position.sol_notional) / float(position.usd_notional)
-        if position.usd_notional
-        else 0.0
-    )
     pnl_usd = float(net) * (
         sol_reference.usd_per_sol if sol_reference else position.sol_usd_reference
     )
@@ -367,8 +374,8 @@ def realize(
         entry_cost_quote=entry_cost,
         exit_proceeds_quote=exit_proceeds,
         trading_fees_quote=fees,
-        network_costs_quote=position.network_costs_quote,
-        other_costs_quote=position.other_costs_quote,
+        network_costs_quote=network_costs,
+        other_costs_quote=other_costs,
         gross_pnl_quote=gross,
         net_pnl_quote=net,
         realized_pnl_usd=pnl_usd,

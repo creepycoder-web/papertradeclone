@@ -4352,7 +4352,32 @@ class PaperLiveEngine:
                     live,
                     now=time.time(),
                     mark_price=trigger_usd,
-                    data_state=(DataState.LIVE if mark.available else DataState.MISSING),
+                    # THE DATA STATE DESCRIBES THE PRICE THAT WAS JUST HANDED
+                    # IN, NOT A DIFFERENT BOOK'S.
+                    #
+                    # ``mark`` is the external aggregator observation; the price
+                    # on this line is the execution-native reference, resolved
+                    # independently by ``_resolve_trigger_reference`` from the
+                    # push channel (or, on recovery, from the venue itself).
+                    # Reading the state off ``mark.available`` made an
+                    # aggregator outage look like missing data for a position
+                    # that had a proven, in-bound, same-market price in hand:
+                    # ``ExitPolicy.assess`` then took its data-integrity branch
+                    # and returned HOLD with EVERY price trigger -- the stop, the
+                    # take-profit, the disaster cap -- disabled. And because this
+                    # branch has just cleared ``native_reference_unavailable_since``
+                    # and passes no ``data_invalid_since``, the 120s bound that
+                    # is supposed to make "fail closed" terminate never started,
+                    # so the hold was unbounded.
+                    #
+                    # A non-None ``trigger_usd`` is LIVE by construction: the
+                    # pushed point is only returned with ``usable=True`` (stream
+                    # HEALTHY and inside ``stale_after_ms``) and proven against
+                    # this position's pinned market, and the recovery path
+                    # likewise returns None rather than a price it cannot prove
+                    # current. The unprovable case is the branch above, which
+                    # keeps the bounded data-invalid policy.
+                    data_state=DataState.LIVE,
                     momentum_30s_pct=None,
                     structure_30s_pct=None,
                     liquidity_change_pct=None,
@@ -5136,11 +5161,26 @@ class PaperLiveEngine:
         self._record_trigger_provenance(position, provenance)
 
         # Evaluate the exit policy with the native price.
+        #
+        # THE DATA STATE DESCRIBES ``pushed_usd``, NOT THE AGGREGATOR MARK.
+        #
+        # ``mark`` is the external aggregator observation; ``pushed_usd`` is the
+        # execution-native reference this function was reached with. Reading the
+        # state off ``mark.available`` made an aggregator outage look like
+        # missing data for a position holding a proven, in-bound, same-market
+        # price: ``ExitPolicy.assess`` then took its data-integrity branch and
+        # returned HOLD with the stop, the take-profit and the disaster cap all
+        # disabled. This path passes no ``data_invalid_since`` at all, so there
+        # was not even a 120s bound on that hold.
+        #
+        # A pushed point is only returned with ``usable=True`` -- stream
+        # HEALTHY, inside ``stale_after_ms``, and proven against this position's
+        # pinned market -- so reaching here with one means the price is LIVE.
         decision = self.exit_policy.assess(
             live,
             now=time.time(),
             mark_price=pushed_usd,
-            data_state=(DataState.LIVE if mark.available else DataState.MISSING),
+            data_state=DataState.LIVE,
             momentum_30s_pct=None,
             structure_30s_pct=None,
             liquidity_change_pct=None,

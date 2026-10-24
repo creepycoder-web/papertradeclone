@@ -4714,25 +4714,44 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
         if self.config.real.paper_executable_quote_enabled:
             try:
                 dec = await self._token_decimals(report.mint or "")
+                # THE QUOTE IS DENOMINATED IN LAMPORTS, AND THE SIZE IS IN USD,
+                # SO A SOL/USD REFERENCE IS REQUIRED TO CROSS BETWEEN THEM.
+                #
+                # This used to compute ``units * price * 1e9`` where ``units``
+                # was ``position_usd / price`` -- which cancels back to
+                # ``position_usd * 1e9``, i.e. it spent the USD figure as though
+                # one SOL were one dollar. At a $122 SOL that asked the venue to
+                # price an order ~122x the real one, and the extra price impact
+                # came back inside ``effective_price``. The entry then filled at
+                # ``max(mark, quote)`` -- see ``simulate_fill`` -- so a sizing
+                # unit error landed directly in the paper fill price.
+                #
+                # ``self._sol_price_usd`` is the memo the canonical resolver
+                # fills; it is the same value handed to the provider below as
+                # ``quote_asset_usd``. Nothing here touches ``real_backend``, so
+                # the PAPER process still never constructs the REAL executor.
+                # No reference means NO QUOTE, with the reason recorded: an
+                # observation priced off a wrong notional is worse than its
+                # absence, which this path already records honestly.
+                sol_usd = self._sol_price_usd
                 if dec is None:
                     paper_quote_reason = (
                         "token decimals unreadable from chain")
+                elif not sol_usd or sol_usd <= 0:
+                    paper_quote_reason = (
+                        "no SOL/USD reference, so a USD notional cannot be "
+                        "expressed in lamports")
                 else:
-                    # NOTIONAL IN LAMPORTS IS DERIVED FROM THE SIZE AND THE
-                    # TOKEN PRICE, not from a SOL/USD read. Reading SOL/USD here
-                    # would go through ``real_backend``, which CONSTRUCTS the
-                    # REAL executor -- and a PAPER process must not construct it
-                    # at all, let alone broadcast through it.
-                    units = (size.position_usd / features.price
-                             if features.price else 0.0)
-                    lamports = int(units * (features.price or 0.0) * 1e9) or 1
+                    lamports = int(
+                        size.position_usd / float(sol_usd) * 1e9
+                    ) or 1
                     paper_quote = await self._paper_quote_provider().quote_buy(
                         token_mint=report.mint or "",
                         quote_mint=WSOL_MINT,
                         quote_amount_raw=lamports,
                         token_decimals=dec,
                         slippage_bps=self.config.real.slippage_bps,
-                        quote_asset_usd=self._sol_price_usd,
+                        quote_asset_usd=sol_usd,
                     )
             except Exception as exc:  # noqa: BLE001 - never blocks a PAPER fill
                 paper_quote = None

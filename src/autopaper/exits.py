@@ -666,6 +666,19 @@ def _held_seconds(position: Any, now: float) -> float:
     return max(0.0, now - _entry_epoch(position, now))
 
 
+def held_seconds(position: Any, now: float) -> float:
+    """
+    The hold this policy measures, for callers OUTSIDE this module.
+
+    Exported so no other module has to re-derive it. ``now - (entry_timestamp
+    or now)`` is the expression that looks equivalent and is not: a 0.0 epoch is
+    falsy, so it reads 0s where this reads the real hold, and a gate built on
+    one while the triggers are built on the other disagrees about the age of the
+    same position.
+    """
+    return _held_seconds(position, now)
+
+
 def _max_hold_for(position: Any) -> float | None:
     """
     The maximum hold this POSITION was opened under, or ``None`` for no cap.
