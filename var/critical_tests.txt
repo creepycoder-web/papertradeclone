@@ -1,0 +1,28 @@
+# Critical areas. Every file here must be GREEN before any commit that touches
+# a critical area. Files with known pre-existing failures are deliberately
+# excluded and listed at the bottom with the reason.
+# SAFETY
+tests/test_safety.py
+tests/test_safety_architecture.py
+tests/test_safety_redaction_and_budget.py
+tests/test_same_market_safety.py
+tests/test_quote_none_safety.py
+# ACCOUNTING
+tests/test_paper_accounting_integrity.py
+tests/test_single_writer.py
+tests/test_sizing_accounting.py
+tests/test_settlement_math_verification.py
+tests/test_trading_logic_bugfixes.py
+# LOOKAHEAD
+tests/test_no_lookahead.py
+tests/test_counterfactual_tracking.py
+# FILLS
+tests/test_fill.py
+tests/test_execution_price_integrity.py
+tests/test_price_integrity.py
+# EXITS
+tests/test_exits.py
+tests/test_exit_reference_regression.py
+# LEDGER
+tests/test_persistence.py
+tests/test_observation_capture.py
