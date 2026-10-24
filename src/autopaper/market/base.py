@@ -40,6 +40,7 @@ class MarketDataService:
         clock: Clock | None = None,
         primary=None,
         fallback=None,
+        observations=None,
     ) -> None:
         self.config = config
         self.clock = clock or SystemClock()
@@ -59,6 +60,9 @@ class MarketDataService:
             cache_ttl_s=config.cache_ttl_s * 2,
             max_retries=config.max_retries,
         )
+        #: Append-only observation capture, or ``None``. TELEMETRY ONLY: see
+        #: ``_record`` for why a failure here cannot reach the trading loop.
+        self.observations = observations
         self._history: dict[str, ObservationSet] = {}
         self._first_valid_price: dict[str, float] = {}
         self._last_result: dict[str, QuoteResult] = {}
@@ -318,6 +322,23 @@ class MarketDataService:
             obs = replace(obs, first_valid_price=fvp)
         self.history(mint).append(obs)
         self.register_known_price(mint, obs.price_usd)
+        # CAPTURE LAST, AND GUARDED.
+        #
+        # This is the ONE point every observation passes through -- candidates
+        # the agent rejected as well as positions it holds -- which is what
+        # makes the recorded stream a complete input for ``replay`` rather than
+        # a sample of what the agent chose to act on.
+        #
+        # It runs AFTER the observation is in history and wrapped in its own
+        # guard, so a full disk, a permission error or a bug in the store costs
+        # a recorded row and nothing else. The store counts and logs its own
+        # failures; see ``observations.ObservationStore.record``.
+        if self.observations is not None:
+            try:
+                self.observations.record(mint, obs)
+            except Exception as exc:  # noqa: BLE001 - telemetry must not raise
+                log("ERROR", "observation capture raised (%s): %s",
+                    type(exc).__name__, exc)
 
     # -- read helpers ------------------------------------------------------
 

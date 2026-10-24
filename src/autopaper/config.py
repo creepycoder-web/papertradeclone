@@ -843,6 +843,33 @@ class NarConfig:
 
 
 @dataclass(frozen=True)
+class ObservationsConfig:
+    """
+    Append-only capture of every market observation, for ``replay``.
+
+    * ``enabled`` True. Capture is the input ``replay`` reads, and an
+      unattended run that forgot to turn it on produces weeks of trading with
+      nothing to analyse afterwards. It is telemetry only: see
+      :mod:`autopaper.observations` for why it can never refuse an observation
+      the agent needs in order to decide.
+    * ``max_mb`` 2000 -> the total disk the stream may occupy. On reaching it
+      the OLDEST ROTATED file is deleted first; the active file is never
+      deleted, and no file outside the stream's own directory is ever touched.
+    * ``rotate_mb`` 64 -> the size at which the active file is rotated. Chosen
+      so a single file stays readable with ordinary tools while the rotation
+      count over weeks stays in the hundreds, not the millions. Not derived
+      from ``max_mb``: the two answer different questions.
+    """
+
+    enabled: bool = True
+    max_mb: float = 2000.0
+    rotate_mb: float = 64.0
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class Config:
     agent_id: str
     root: Path
@@ -862,6 +889,7 @@ class Config:
     decision: DecisionConfig
     exits: ExitConfig
     real: RealConfig = RealConfig()
+    observations: ObservationsConfig = ObservationsConfig()
     #: CLI-only mode. The trading core and the upstream CHANNEL listener keep
     #: working; every OUTBOUND Telegram bot call is disabled, so nothing the bot
     #: does can sit on the critical path. Telegram is two things: the channel
@@ -921,6 +949,7 @@ class Config:
             "decision": self.decision.as_dict(),
             "exits": self.exits.as_dict(),
             "real": self.real.as_dict(),
+            "observations": self.observations.as_dict(),
             "dashboard_interval_s": self.dashboard_interval_s,
         }
 
@@ -1361,6 +1390,14 @@ def build_config(root: Path | str | None = None) -> Config:
         ),
         exits=ExitConfig(disaster_cap_pct=risk.disaster_cap_pct),
         real=real,
+        observations=ObservationsConfig(
+            enabled=_as_bool(get("OBS_ENABLED"),
+                             ObservationsConfig.enabled),
+            max_mb=_as_float(get("OBS_MAX_MB"),
+                             ObservationsConfig.max_mb),
+            rotate_mb=_as_float(get("OBS_ROTATE_MB"),
+                                ObservationsConfig.rotate_mb),
+        ),
         env=env,
     )
 

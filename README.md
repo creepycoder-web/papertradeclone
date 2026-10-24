@@ -332,6 +332,33 @@ plus `var/paper_account.json`, written atomically (temp file + `os.replace`) and
 carrying account state, open positions, cooldowns, unfilled counts,
 first-valid-price anchors and both dedupe sets.
 
+### Observation capture
+
+`var/observations/observations.jsonl` records **every** market observation the
+agent received — for candidates it rejected as well as for positions it held —
+captured at `MarketDataService._record`, the single point they all pass
+through. That completeness is what makes the stream a valid input for replay:
+a stream filtered by what the agent chose to act on would condition every
+replayed decision on the live run's choices.
+
+It is telemetry and is wired so it cannot be anything else. The capture call
+runs *after* the observation is in history, inside its own guard, so a full
+disk or a bug in the store costs a recorded row and never an observation the
+agent needed in order to decide.
+
+| key | default | effect |
+|---|---|---|
+| `OBS_ENABLED` | `true` | capture on. Off means replay has nothing to read. |
+| `OBS_ROTATE_MB` | `64` | size at which the active file rotates |
+| `OBS_MAX_MB` | `2000` | total disk cap for the stream |
+
+At the cap the **oldest rotated** file is deleted first. The active file is
+never deleted, and only files matching the stream's own
+`observations-*.jsonl` pattern inside its own directory are ever considered —
+the ledgers and `paper_account.json` live in `var/` too, and a disk-pressure
+cleanup able to reach those could destroy the audit trail to save space. A test
+asserts it cannot.
+
 On restart the engine reloads the bankroll, restores open positions with their
 route/regime/exit style/MFE/MAE, rebuilds memory from **closed** trades only,
 and resumes monitoring. **The bankroll is never reset** — `starting_bankroll_usd`

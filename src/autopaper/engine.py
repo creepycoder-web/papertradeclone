@@ -109,6 +109,7 @@ from .ledger import EventType, Ledger, PaperAccountState, load_json, save_json_a
 from .logging_setup import log
 from .market import MarketDataService
 from .memory import ResearchMemory
+from .observations import store_for
 from .models import (
     AlertSnapshot,
     DataState,
@@ -921,7 +922,13 @@ class PaperTrader:
         self.config = config
         self.clock = clock or SystemClock()
         self.started_at = self.clock.now()
-        self.market = market or MarketDataService(config.market, clock=self.clock)
+        # Observation capture is attached to the market service, which is the
+        # one point every observation passes through. A market service handed
+        # in by a test or another runtime keeps whatever capture it was built
+        # with; nothing here overrides it.
+        self.observations = store_for(config, config.var_dir, clock=self.clock)
+        self.market = market or MarketDataService(
+            config.market, clock=self.clock, observations=self.observations)
         self.nar = nar or NarService(config.nar, clock=self.clock)
         # Prospective forward-validation capture. The boundary is created once
         # and never moved, so anything recorded here is genuinely post-
