@@ -109,6 +109,7 @@ from .ledger import EventType, Ledger, PaperAccountState, load_json, save_json_a
 from .logging_setup import log
 from .market import MarketDataService
 from .memory import ResearchMemory
+from .health import HEARTBEAT_FILE, write_heartbeat
 from .observations import store_for
 from .counterfactual import tracker_for
 from .models import (
@@ -927,6 +928,10 @@ class PaperTrader:
         # one point every observation passes through. A market service handed
         # in by a test or another runtime keeps whatever capture it was built
         # with; nothing here overrides it.
+        self._last_heartbeat_write: float = 0.0
+        #: When the last alert arrived. Recording only; nothing reads it to
+        #: make a decision.
+        self._last_alert_at: float | None = None
         self.observations = store_for(config, config.var_dir, clock=self.clock)
         # Counterfactual tracking of REJECT/WAIT. Holds no market service and
         # no memory, so it cannot spend a request a live decision is waiting
@@ -3161,6 +3166,7 @@ class PaperTrader:
         # decision it fed. Cleared in the same `finally` the task is discarded
         # in, so a raise cannot leave later position-monitoring rows wearing
         # this candidate's name.
+        self._last_alert_at = analysis_start
         if self.observations is not None:
             self.observations.attribute_to(snapshot.candidate_id)
         try:
@@ -5274,6 +5280,36 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
         # Class-qualified on purpose: this is a staticmethod, so the bare name
         # is not in scope at call time.
         return PaperTrader.UNNAMED_REJECT_REASON
+
+    def _write_heartbeat(self) -> None:
+        """
+        Publish liveness for a watchdog, at most every ``health.interval_s``.
+
+        Written from the monitor tick rather than from a task of its own: the
+        tick IS the thing whose liveness matters, so a heartbeat produced by a
+        separate timer could keep reporting OK while position management had
+        stopped. Rate-limited here rather than by the loop interval because the
+        tick speeds up to 3s while a position is open.
+
+        Fire-and-forget: ``write_heartbeat`` never raises, and a monitoring
+        failure surfaces as staleness, which is the correct outcome.
+        """
+        now = self.clock.now()
+        if now - self._last_heartbeat_write < float(self.config.health.interval_s):
+            return
+        self._last_heartbeat_write = now
+        requests = max(1, getattr(self.market, "request_count", 0) or 0)
+        errors = getattr(self.market, "error_count", 0) or 0
+        write_heartbeat(self.config.var_dir / HEARTBEAT_FILE, {
+            "at": now,
+            "state": getattr(self.state.run_state, "value",
+                             str(self.state.run_state)),
+            "open_positions": len(self.account.open_positions()),
+            "last_alert_at": self._last_alert_at,
+            "last_market_fetch_at": getattr(self.market, "last_success_at", None),
+            "provider_error_rate": round(errors / requests, 4),
+            "pid": os.getpid(),
+        })
 
     def _track_counterfactual(self, report: Any, mint: str) -> None:
         """
@@ -8908,6 +8944,7 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
             try:
                 self._service_control()
                 await self.monitor_once()
+                self._write_heartbeat()
                 # Counterfactuals advance on the SAME tick as the positions, and only
                 # against history the monitor pass already fetched. There is no
                 # separate counterfactual poll, which is what keeps live work ahead of

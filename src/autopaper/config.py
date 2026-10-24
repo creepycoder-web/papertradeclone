@@ -895,6 +895,35 @@ class ObservationsConfig:
     #: behind, and losing the last few seconds to a kill -9 costs a replay
     #: nothing. An orderly stop flushes, so it loses nothing at all.
     flush_s: float = 5.0
+    #: Free disk required ON TOP of ``max_mb`` before `health --startup`
+    #: passes. The stream is allowed to grow to its cap, so a machine with
+    #: exactly ``max_mb`` free is already full.
+    disk_margin_mb: float = 500.0
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class HealthConfig:
+    """
+    Watchdog thresholds. The exit code is the interface; see
+    :mod:`autopaper.health`.
+
+    * ``interval_s`` 30 -> how often the heartbeat is written.
+    * ``degraded_s`` 90 -> three missed beats is a warning, not a restart.
+    * ``stale_s`` 300 -> ten missed beats means the loop is gone; a watchdog
+      restarts on this and on nothing else.
+    * ``error_rate_degraded`` 0.25 -> provider errors at or above this are
+      DEGRADED, never STALE: restarting on a provider wobble would turn it into
+      a restart loop, and the runtime already marks data stale rather than
+      guessing.
+    """
+
+    interval_s: float = 30.0
+    degraded_s: float = 90.0
+    stale_s: float = 300.0
+    error_rate_degraded: float = 0.25
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -922,6 +951,7 @@ class Config:
     real: RealConfig = RealConfig()
     observations: ObservationsConfig = ObservationsConfig()
     counterfactual: CounterfactualConfig = CounterfactualConfig()
+    health: HealthConfig = HealthConfig()
     #: CLI-only mode. The trading core and the upstream CHANNEL listener keep
     #: working; every OUTBOUND Telegram bot call is disabled, so nothing the bot
     #: does can sit on the critical path. Telegram is two things: the channel
@@ -983,6 +1013,7 @@ class Config:
             "real": self.real.as_dict(),
             "observations": self.observations.as_dict(),
             "counterfactual": self.counterfactual.as_dict(),
+            "health": self.health.as_dict(),
             "dashboard_interval_s": self.dashboard_interval_s,
         }
 
@@ -1431,6 +1462,18 @@ def build_config(root: Path | str | None = None) -> Config:
             rotate_mb=_as_float(get("OBS_ROTATE_MB"),
                                 ObservationsConfig.rotate_mb),
             flush_s=_as_float(get("OBS_FLUSH_S"), ObservationsConfig.flush_s),
+            disk_margin_mb=_as_float(get("OBS_DISK_MARGIN_MB"),
+                                     ObservationsConfig.disk_margin_mb),
+        ),
+        health=HealthConfig(
+            interval_s=_as_float(get("HEARTBEAT_INTERVAL_S"),
+                                 HealthConfig.interval_s),
+            degraded_s=_as_float(get("HEARTBEAT_DEGRADED_S"),
+                                 HealthConfig.degraded_s),
+            stale_s=_as_float(get("HEARTBEAT_STALE_S"), HealthConfig.stale_s),
+            error_rate_degraded=_as_float(
+                get("HEALTH_ERROR_RATE_DEGRADED"),
+                HealthConfig.error_rate_degraded),
         ),
         counterfactual=CounterfactualConfig(
             enabled=_as_bool(get("COUNTERFACTUAL_ENABLED"), CounterfactualConfig.enabled),

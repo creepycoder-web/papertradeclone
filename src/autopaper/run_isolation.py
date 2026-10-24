@@ -145,9 +145,13 @@ def _resolve(node: ast.ImportFrom, module: str) -> str:
     return ".".join([*base, node.module]) if node.module else ".".join(base)
 
 
+_WALK_CACHE: dict[tuple[str, str, int], "ImportGraph"] = {}
+
+
 def walk_imports(entry: str = RUN_ENTRY_MODULE, *,
                  within: str = "autopaper",
-                 max_modules: int = 400) -> ImportGraph:
+                 max_modules: int = 400,
+                 refresh: bool = False) -> ImportGraph:
     """
     Every module name reachable from ``entry``, by static analysis only.
 
@@ -166,6 +170,16 @@ def walk_imports(entry: str = RUN_ENTRY_MODULE, *,
     but not expanded, which is what lets the capability check see ``solders``
     without needing it installed.
     """
+    # CACHED PER PROCESS. The walk AST-parses every module under ``within``,
+    # which for this package includes two 8,000-line engines, so it costs about
+    # a second. A live run calls it once at startup, but ``health --startup``
+    # and the tests call it repeatedly. The source cannot change inside one
+    # process, so the result cannot go stale; ``refresh`` exists for a test that
+    # writes a fixture package and needs a fresh walk.
+    key = (entry, within, max_modules)
+    if not refresh and key in _WALK_CACHE:
+        return _WALK_CACHE[key]
+
     graph = ImportGraph(entry=entry)
     queue: list[str] = [entry]
     seen: set[str] = set()
@@ -200,6 +214,7 @@ def walk_imports(entry: str = RUN_ENTRY_MODULE, *,
                 graph.lazy_names.add(found)
             if found == within or found.startswith(within + "."):
                 queue.append(found)
+    _WALK_CACHE[key] = graph
     return graph
 
 

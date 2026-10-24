@@ -1495,6 +1495,39 @@ def cmd_unlatch(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_health(cfg: Config, args: argparse.Namespace) -> int:
+    """
+    Report health for a watchdog. READ-ONLY; starts nothing.
+
+    Exit codes ARE the interface: 0 ok, 1 degraded, 2 stale or missing. The
+    health timer restarts the bot on 2 only -- restarting on a provider wobble
+    would turn it into a restart loop.
+
+    ``--startup`` runs the pre-flight ops checks instead and exits non-zero if
+    any fails. It reports KEY NAMES only, never values: this output reaches the
+    terminal and, through systemd, the journal.
+    """
+    from . import health as health_mod
+
+    if getattr(args, "startup", False):
+        checks = health_mod.startup_checks(cfg)
+        print(health_mod.render(checks))
+        return 0 if all(c.ok for c in checks) else 1
+
+    path = cfg.var_dir / health_mod.HEARTBEAT_FILE
+    verdict = health_mod.assess(
+        health_mod.read_heartbeat(path),
+        now=time.time(),
+        degraded_s=cfg.health.degraded_s,
+        stale_s=cfg.health.stale_s,
+        error_rate_degraded=cfg.health.error_rate_degraded,
+    )
+    print(f"HEALTH: {verdict.label}")
+    for line in verdict.lines:
+        print(f"  {line}")
+    return verdict.code
+
+
 def cmd_config(cfg: Config, args: argparse.Namespace) -> int:
     print(describe(cfg))
     print(json.dumps(cfg.as_dict(), indent=2, default=str))
@@ -1724,6 +1757,15 @@ def build_parser() -> argparse.ArgumentParser:
     ul.set_defaults(func=cmd_unlatch)
     c = sub.add_parser("config", help="show effective configuration")
     c.set_defaults(func=cmd_config)
+    hl = sub.add_parser(
+        "health",
+        help="report health for a watchdog (exit 0 ok / 1 degraded / 2 stale)",
+    )
+    hl.add_argument(
+        "--startup", action="store_true",
+        help="run the pre-flight ops checks instead of reading the heartbeat",
+    )
+    hl.set_defaults(func=cmd_health)
     v = sub.add_parser("verify", help="migration + safety audit")
     v.add_argument("--json", action="store_true")
     v.set_defaults(func=cmd_verify)

@@ -30,6 +30,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 | `run` | start / resume the autonomous paper loop |
 | `status` | one-shot account, ledger and safety report |
 | `stop` | **STOP** — no new positions; existing ones keep being managed |
+| `health` | watchdog status; **exit 0 ok / 1 degraded / 2 stale** |
+| `health --startup` | pre-flight ops checks, with the exact fix for each failure |
 | `flatten` | **FLATTEN** — close open paper positions now |
 | `resume` | clear a pending STOP/FLATTEN |
 | `report` | full paper performance report, by route/regime/bucket |
@@ -352,6 +354,7 @@ agent needed in order to decide.
 | `OBS_ROTATE_MB` | `64` | size at which the active file rotates |
 | `OBS_MAX_MB` | `2000` | total disk cap for the stream, counting **compressed** rotated files |
 | `OBS_FLUSH_S` | `5` | flush interval for the write buffer |
+| `OBS_DISK_MARGIN_MB` | `500` | free disk required *on top of* `OBS_MAX_MB` before `health --startup` passes |
 
 Each row carries `schema_version`, the `candidate_id` it was recorded under
 (`null` for position monitoring, which has no candidate) and the observation's
@@ -469,3 +472,42 @@ logs/             autopaper.log (gitignored)
 * **No historical replay as live** — `TELEGRAM_ALLOW_BACKLOG=false`
 * **No manufactured candidates** — with no alerts, the agent trades nothing
 * **No live execution of any kind**
+
+
+---
+
+## Running unattended
+
+`var/heartbeat.json` is written from the monitor tick every
+`HEARTBEAT_INTERVAL_S` — from the tick itself, not from a timer of its own, so
+a heartbeat cannot keep reporting OK while position management has stopped. It
+is written atomically (temp file, `fsync`, `os.replace`): without the fsync a
+crash can leave a zero-length file that reads as "no heartbeat", and a watchdog
+would restart a healthy bot.
+
+`autopaper.cli health` turns that into an exit code, and **the exit code is the
+interface**:
+
+| code | meaning | what a watchdog should do |
+|---|---|---|
+| 0 | heartbeat fresh, provider errors normal | nothing |
+| 1 | heartbeat older than `HEARTBEAT_DEGRADED_S`, or provider error rate at or above `HEALTH_ERROR_RATE_DEGRADED` | warn only |
+| 2 | heartbeat older than `HEARTBEAT_STALE_S`, missing or unparseable | restart |
+
+| key | default | effect |
+|---|---|---|
+| `HEARTBEAT_INTERVAL_S` | `30` | how often the heartbeat is written |
+| `HEARTBEAT_DEGRADED_S` | `90` | three missed beats → degraded |
+| `HEARTBEAT_STALE_S` | `300` | ten missed beats → stale |
+| `HEALTH_ERROR_RATE_DEGRADED` | `0.25` | provider error rate that counts as degraded |
+
+A provider wobble is **degraded, never stale**: restarting on it would turn it
+into a restart loop, and the runtime already marks data stale rather than
+guessing. An absent heartbeat is reported as stale, not OK — missing is
+indistinguishable from dead, so it takes the pessimistic reading.
+
+`health --startup` checks the Telegram session and chat **key names** (never
+values — this output reaches the journal), that `verify` passes, that the
+run-path isolation check passes, that `var/` and `logs/` are writable, that free
+disk exceeds `OBS_MAX_MB + OBS_DISK_MARGIN_MB`, and that `.env.local` is not
+readable by group or others. Each failure prints its exact fix.
