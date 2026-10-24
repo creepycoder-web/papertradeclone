@@ -50,6 +50,7 @@ from .ledger import Ledger, load_json, save_json_atomic
 from .logging_setup import configure as configure_logging
 from .logging_setup import log
 from .memory import ResearchMemory
+from .run_isolation import RunPathViolation, assert_run_path_isolated
 from .safety import AGENT_ID, STRATEGY, audit
 from .strategy_profile import label as _sp_label, max_hold_s as _sp_max_hold_s
 from .strategy_profile import parse_profile as _sp_parse
@@ -86,6 +87,25 @@ def _trader(cfg: Config):
 
 def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     configure_logging(cfg.log_dir, args.log_level)
+    # CONTAINMENT: refuse to start if real-execution capability is live.
+    #
+    # G1 (var/audit.md) established that `solders` is reachable in the import
+    # graph from this function, via engine.py:90 -> execution/real.py:63 ->
+    # execution/solana.py:327, the last two being lazy in-function imports.
+    # That graph cannot be cleaned without a refactor nobody asked for, so what
+    # is enforced here instead is the fact the paper deployment's safety
+    # actually rests on: the capability-bearing distributions are NOT INSTALLED.
+    #
+    # Checked BEFORE the engine is constructed, so a machine that has gained the
+    # capability never reaches the alert, decision, sizing or exit paths. It is
+    # a startup refusal, not a trading rule: nothing below this line behaves
+    # differently because of it.
+    try:
+        assert_run_path_isolated()
+    except RunPathViolation as exc:
+        log("SYSTEM", "refusing to start: %s", exc)
+        print(f"\nREFUSED: {exc}\n", file=sys.stderr)
+        return 6
     # --cli MUST reach the config before the engine is constructed.
     #
     # PaperTrader builds the Telegram bot (transport, notifier, poller, queue)
