@@ -1,0 +1,31 @@
+CONFIG: NATIVE_MONITOR_WS_URL is not set, so the native market monitor is DISABLED and every monitoring tick uses the RPC polling recovery path. Set it to a wss:// endpoint to use the push channel.
+[PASS] no_forbidden_modules_loaded: none
+[PASS] external_model_imports_zero: EXTERNAL_MODEL_IMPORTS=0 (blocked attempts: 0)
+[PASS] model_calls_zero: MODEL_CALLS=0
+[PASS] shadow_entries_zero: SHADOW_ENTRIES=0
+[PASS] shadow_capital_zero: SHADOW_CAPITAL=0.0
+[PASS] no_ml_symbols_in_package: none
+[PASS] real_disabled_at_startup: RuntimeState() is OFF/PAPER
+[PASS] real_requires_operator: REAL_ARMED is unreachable without a Telegram confirmation token
+[PASS] real_arm_rejects_bare_call: arm_real() without a token refused
+[PASS] v3c_thresholds_frozen: MC<=$20,000 SQ>=0.55 (hash 8ac4d648)
+[PASS] l25_threshold_frozen: f_liq_to_mcap>=0.9647 (hash bf5e608b)
+[PASS] active_strategy_is_l25: active strategy = L25
+[PASS] profile_set_is_closed: profiles = L25_CURRENT, V2_FLOOR, L25_60S, L25_MAX_HOLD, L25_TP100, V2_FLOOR_BETA
+[PASS] profile_default_is_l25_current: default = L25_CURRENT
+[PASS] default_entry_strategy_is_l25: the default entry strategy is still L25
+[PASS] profile_l25_current_has_no_cap: L25_CURRENT adds no maximum hold, so it is behaviourally identical to the pre-profile runtime
+[PASS] profile_60s_cap_is_60: L25_60S max hold = 60.0s
+[PASS] effective_entry_gates_resolve_to_declared_gates: resolved gate sets: ('AMARIH',); ('L25', 'AMARIH'); ('L25',)
+[PASS] beta_selection_stays_disabled: the disabled beta group and beta arms authorize through L25 only
+[PASS] amarih_selection_makes_amarih_operative: selecting the Amarih group authorizes through AMARIH alone
+[PASS] default_and_empty_selection_never_activates_beta: an unset, empty or unrecognised selection authorizes through L25 only
+[PASS] default_and_empty_selection_never_activates_amarih: an unset, empty or unrecognised selection authorizes through L25 only
+[PASS] profile_entry_strategies_are_declared: entry strategies in use: L25, V2_FLOOR
+[PASS] profile_l25_family_entry_is_unchanged: L25_CURRENT, L25_60S, L25_MAX_HOLD and L25_TP100 all still authorize through L25
+[PASS] profile_v2_floor_cap_is_90: V2_FLOOR max hold = 90.0s
+[PASS] profile_v2_floor_threshold_is_frozen: V2_FLOOR's vol5/mcap and momentum-band thresholds match autopaper.v2floor's frozen constants and its definition hash verifies
+[PASS] profile_v2_floor_exit_bracket_is_the_research_rule: V2_FLOOR's exit is its OWN researched bracket -- TP +30% / SL -30% / max hold 90s, in that precedence -- and not the shared L25 stack, whose -12% stop and 75s no-follow-through exit would otherwise close the position well before the researched -30% stop
+[PASS] profile_v2_floor_sizing_is_ten_percent: V2_FLOOR stakes a flat 10% of current equity, the size the research was measured at; the shared 10%/12.5% ladder applies to every L25 profile
+[PASS] profile_only_v2_floor_overrides_sizing_or_exit: V2_FLOOR is the only profile with its own exit bracket or its own position size, so no L25 profile's behaviour moved when V2_FLOOR was added
+[PASS] profile_selecting_v2_floor_does_not_arm_real: selecting V2_FLOOR cannot set real_armed; arming REAL still requires arm_real() with a single-use operator token and a passing preflight

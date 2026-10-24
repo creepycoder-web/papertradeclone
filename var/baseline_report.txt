@@ -1,0 +1,14 @@
+CONFIG: NATIVE_MONITOR_WS_URL is not set, so the native market monitor is DISABLED and every monitoring tick uses the RPC polling recovery path. Set it to a wss:// endpoint to use the push channel.
+MEMEBOT_V3 - PAPER REPORT
+================================================================
+no closed paper trades yet
+  trades=0 W/L=0/0 win%=0.0
+  realized=+0.00 (+0.0%) expectancy=+0.000 PF=0.00
+  avgW=+0.00 avgL=+0.00 maxDD=0.0% streak=0
+  fees=$0.00 slip=$0.00 hold=0s runners=0 capture=0%
+
+  funnel: {}
+
+  paper memory lessons (as of now):
+      (no completed trades to learn from)
+================================================================
