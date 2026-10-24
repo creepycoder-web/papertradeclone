@@ -18,7 +18,7 @@ from .account import AccountingError, MarkedPosition, PaperAccount
 from .clock import iso
 from .config import ExitConfig, RiskLimits
 from .execution.fill import fill_books_reconcile
-from .exits import ExitDecision, ExitPolicy
+from .exits import ExitDecision, ExitPolicy, held_seconds
 from .ledger import EventType, Ledger
 from .logging_setup import log
 from .models import (
@@ -369,7 +369,16 @@ class PositionBook:
             liquidity_change_pct=liquidity_change_pct,
             data_invalid_since=since,
         )
-        held = now - (position.entry_timestamp or now)
+        # THE SAME "held" THE EXIT POLICY JUST USED.
+        #
+        # ``now - (entry_timestamp or now)`` is the truthiness bug ``exits``
+        # documents against: a 0.0 epoch is falsy, so this read 0s while
+        # ``ExitPolicy.assess`` -- which uses ``is not None`` semantics -- read
+        # the real hold. The two then disagreed about the age of the same
+        # position, and this gate suppressed exits the policy had correctly
+        # fired. ``exits.held_seconds`` is that policy's own helper, so there is
+        # one answer rather than two.
+        held = held_seconds(position, now)
         if decision.action == "EXIT" and decision.trigger in (
             "momentum_collapse", "structure_break", "peak_giveback",
             "wide_giveback", "no_follow_through",

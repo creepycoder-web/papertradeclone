@@ -118,7 +118,11 @@ class FeatureSet:
     # how much concrete detail it contains. Neither is a hype score.
     narrative_chars: int = 0
     narrative_specifics: int = 0
-    narrative_placeholder: bool = False,
+    # NO TRAILING COMMA. ``narrative_placeholder: bool = False,`` makes the
+    # default the TUPLE ``(False,)``, which is TRUTHY -- so every FeatureSet
+    # built without this field explicitly read as "the narrative bot replied
+    # with a placeholder" and carried the -0.06 signal-quality discount.
+    narrative_placeholder: bool = False
     # Flow evidence, PERSISTED so a future audit can prove how signal_quality
     # was composed. These were computed for the +0.06 flow bonus but never
     # stored, so it was impossible to verify the bonus on any given record.
@@ -243,21 +247,39 @@ def build_features(
     #      the oldest observation already in our history
     #   4. failing all of that, the current price, which means extension is 0 by
     #      definition and the score is capped (see _extension_score)
+    #
+    # ANCHORED IS TRACKED EXPLICITLY, not inferred from ``price != fvp``.
+    # Inferring it conflated two different states: "there is no earlier price"
+    # (case 4) and "there IS an earlier price and the token has not moved since"
+    # -- which is extension 0%, the LEAST extended entry the ladder can see. A
+    # token sitting flat on its first observed price was therefore reported
+    # unanchored, scored 0.35 instead of 1.0, raised ``extension_unanchored``,
+    # and lost the chaseable band in ``select_route``.
     fvp = None
+    fvp_anchored = False
     if latest is not None and latest.first_valid_price:
         fvp = latest.first_valid_price
+        fvp_anchored = True
     if fvp is None and alert is not None:
-        fvp = alert.num("first_valid_price")
+        explicit = alert.num("first_valid_price")
+        if explicit:
+            fvp = explicit
+            fvp_anchored = True
     if fvp is None:
         candidates: list[tuple[float, float]] = []
         if alert is not None and alert_price:
             candidates.append((alert.received_timestamp, alert_price))
-        oldest = past.latest() if len(past) else None
         oldest_first = list(past)[0] if len(past) else None
         if oldest_first is not None and oldest_first.price_usd:
             candidates.append((oldest_first.observed_at, oldest_first.price_usd))
         if candidates:
-            fvp = min(candidates, key=lambda c: c[0])[1]
+            anchor_at, anchor_price = min(candidates, key=lambda c: c[0])
+            # An anchor has to be EARLIER than the price it is measured against.
+            # The newest print cannot anchor itself: with one observation and no
+            # alert price there is genuinely no earlier price to measure from.
+            if latest is not None and anchor_at < latest.observed_at:
+                fvp = anchor_price
+                fvp_anchored = True
     if fvp is None and price:
         fvp = price
 
@@ -306,9 +328,19 @@ def build_features(
     if sells is None and nar_sells is not None:
         sells = nar_sells
 
-    # 15m change derived from our own series when the venue does not supply it
+    # 15m change derived from our own series when the venue does not supply it.
+    #
+    # ``require_full_window``, exactly like the 30s/60s momentum below. Without
+    # it a token observed for ten seconds has no 15m window, the window-start
+    # helper falls back to the newest print, and the result is a FABRICATED
+    # ``change_15m == 0.0``. ``regime.classify`` ranks 15m ABOVE the 60s/30s
+    # windows, so that zero outranked the momentum actually measured and a
+    # live launch read as flat -- which is how a moving token was classified
+    # STABILIZING and refused.
     change_15m = None
-    p15 = _price_at_window_start(past, decision_time, 900.0)
+    p15 = _price_at_window_start(
+        past, decision_time, 900.0, require_full_window=True
+    )
     if price and p15 and p15 > 0:
         change_15m = (price - p15) / p15 * 100.0
 
@@ -317,10 +349,13 @@ def build_features(
     change_span = None
     if len(all_prices) >= 2 and all_prices[0][1] > 0:
         change_span = (all_prices[-1][1] - all_prices[0][1]) / all_prices[0][1] * 100.0
+    # The 2s window start, NOT the oldest print in the whole history. Measuring
+    # from ``all_prices[0]`` made this field a duplicate of
+    # ``change_over_span_pct`` under a name that says two seconds.
     change_2s = None
     p2 = _price_at_window_start(past, decision_time, 2.0)
-    if price and p2 and p2 > 0 and all_prices:
-        change_2s = (price - all_prices[0][1]) / all_prices[0][1] * 100.0
+    if price and p2 and p2 > 0:
+        change_2s = (price - p2) / p2 * 100.0
 
     mom30 = None
     p30 = _price_at_window_start(
@@ -376,7 +411,7 @@ def build_features(
     mom_score = _momentum_score(change_5m, change_15m, mom30, mom60, vol_60)
     struct_score = _structure_score(liq, mcap, token_age, bsr, vol5, txns1h)
     ext_score, extension, anchored = _extension_score(
-        price, fvp, dd_from_high, change_5m
+        price, fvp, dd_from_high, change_5m, anchored=fvp_anchored
     )
 
     quality = _signal_quality(
@@ -594,7 +629,7 @@ def _structure_score(liq, mcap, age, bsr, vol5, txns1h) -> float:
     return _clip(score)
 
 
-def _extension_score(price, fvp, dd_from_high, c5):
+def _extension_score(price, fvp, dd_from_high, c5, *, anchored=None):
     """
     The anti-exhaustion axis.
 
@@ -606,8 +641,20 @@ def _extension_score(price, fvp, dd_from_high, c5):
     - i.e. we have no history at all. In that case the score is deliberately
     capped below its maximum: claiming a perfect 1.0 extension score off a single
     print would be the most flattering possible reading of no information.
+
+    THE CALLER DECIDES WHETHER AN ANCHOR EXISTS. ``build_features`` knows which
+    of its four resolution steps produced ``fvp`` and passes the answer in. The
+    old local inference - ``abs(price - fvp) > 0`` - could not tell "no earlier
+    price" from "an earlier price that happens to equal this one", and the
+    second of those is extension 0%, the least extended entry there is. The
+    inference is retained only for a caller that supplies no flag, so a direct
+    call written before this parameter existed behaves as it did.
     """
-    anchored = bool(fvp and price and fvp > 0 and abs(price - fvp) > 0)
+    usable = bool(fvp and price and fvp > 0)
+    if anchored is None:
+        anchored = usable and abs(price - fvp) > 0
+    else:
+        anchored = bool(anchored) and usable
     extension = (price - fvp) / fvp if anchored else None
     if extension is None:
         return 0.35, None, False

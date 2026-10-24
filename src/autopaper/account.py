@@ -511,11 +511,31 @@ class PaperAccount:
         Cash is returned, and the fee/slippage already incurred stays booked -
         a cancelled position really did cost the account that much, and quietly
         refunding it would understate what the simulation paid.
+
+        SO THE REFUND IS THE NOTIONAL, NOT ``cash_out_usd``. ``cash_out_usd`` is
+        ``notional + entry_fee``, and ``register_position`` debited that whole
+        amount AND added the fee to ``fees_paid_usd``. Refunding all of it put
+        the cash back exactly where it started while the account still reported
+        the fee as paid - so ``fees_paid_usd`` named money that had never left,
+        and no reconciliation of cash against the cost counters could close.
+        The fee is the one part of the entry a cancellation cannot undo, which
+        is what the paragraph above says and what this now does.
+
+        AND IT IS REALIZED, so the account-wide identity
+        ``equity == bankroll + realized + unrealized`` still closes with nothing
+        open. A cancelled attempt is a real, if small, realized loss: the fee.
+        It produces no ``Trade``, so the trade-derived figure in ``stats`` does
+        not see it - which is a property of a cancellation, not a disagreement.
         """
         position.status = PositionStatus.CANCELLED
         position.exit_reason = reason
-        self.state.cash_usd += position.cash_out_usd
-        self.state.cash_usd = round(self.state.cash_usd, 8)
+        refund = position.cash_out_usd - position.entry_fee_usd
+        self.state.cash_usd = round(self.state.cash_usd + refund, 8)
+        self.state.realized_pnl_usd -= position.entry_fee_usd
+        position.cash_in_usd = refund
+        position.realized_pnl_usd = -position.entry_fee_usd
+        position.unrealized_pnl_usd = 0.0
+        position.market_value_usd = 0.0
 
     def update_peak(self, equity: float) -> None:
         if equity > self.state.peak_equity_usd:
