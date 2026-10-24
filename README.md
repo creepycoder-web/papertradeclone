@@ -30,6 +30,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 | `run` | start / resume the autonomous paper loop |
 | `status` | one-shot account, ledger and safety report |
 | `stop` | **STOP** — no new positions; existing ones keep being managed |
+| `health` | watchdog status; **exit 0 ok / 1 degraded / 2 stale** |
+| `health --startup` | pre-flight ops checks, with the exact fix for each failure |
 | `flatten` | **FLATTEN** — close open paper positions now |
 | `resume` | clear a pending STOP/FLATTEN |
 | `report` | full paper performance report, by route/regime/bucket |
@@ -332,6 +334,89 @@ plus `var/paper_account.json`, written atomically (temp file + `os.replace`) and
 carrying account state, open positions, cooldowns, unfilled counts,
 first-valid-price anchors and both dedupe sets.
 
+### Observation capture
+
+`var/observations/observations.jsonl` records **every** market observation the
+agent received — for candidates it rejected as well as for positions it held —
+captured at `MarketDataService._record`, the single point they all pass
+through. That completeness is what makes the stream a valid input for replay:
+a stream filtered by what the agent chose to act on would condition every
+replayed decision on the live run's choices.
+
+It is telemetry and is wired so it cannot be anything else. The capture call
+runs *after* the observation is in history, inside its own guard, so a full
+disk or a bug in the store costs a recorded row and never an observation the
+agent needed in order to decide.
+
+| key | default | effect |
+|---|---|---|
+| `OBS_ENABLED` | `true` | capture on. Off means replay has nothing to read. |
+| `OBS_ROTATE_MB` | `64` | size at which the active file rotates |
+| `OBS_MAX_MB` | `2000` | total disk cap for the stream, counting **compressed** rotated files |
+| `OBS_FLUSH_S` | `5` | flush interval for the write buffer |
+| `OBS_DISK_MARGIN_MB` | `500` | free disk required *on top of* `OBS_MAX_MB` before `health --startup` passes |
+
+Each row carries `schema_version`, the `candidate_id` it was recorded under
+(`null` for position monitoring, which has no candidate) and the observation's
+own `received_at`. Rows are serialised from the `Observation` **dataclass
+fields**, not from `as_dict()` — that reporting view omits `volume_24h_usd`, so
+capturing through it silently dropped a field a replay would have decided on.
+
+Rotated files are gzipped (`observations-<stamp>.jsonl.gz`, ~10x smaller), and
+the cap counts the compressed size, so the same disk holds far more history.
+Writes are buffered and flushed every `OBS_FLUSH_S` and on shutdown: an fsync
+per observation is latency the trading loop waits behind, and losing a few
+seconds of telemetry to a `kill -9` costs a replay nothing.
+
+`load_observations(paths)` returns `{candidate_id: ObservationSet}`. A malformed
+or truncated line is **skipped and counted**, never raised on — the writer can
+be killed mid-row, so a truncated final line is the expected shape of a
+crash-interrupted session, and a loader that raised would make every such
+session unreadable.
+
+At the cap the **oldest rotated** file is deleted first. The active file is
+never deleted, and only files matching the stream's own
+`observations-*.jsonl` pattern inside its own directory are ever considered —
+the ledgers and `paper_account.json` live in `var/` too, and a disk-pressure
+cleanup able to reach those could destroy the audit trail to save space. A test
+asserts it cannot.
+
+### Counterfactual tracking
+
+Every gate trades false positives for false negatives, and a ledger of taken
+trades can only show the first kind. So each **REJECT** and **WAIT** is followed
+for `COUNTERFACTUAL_WINDOW_S` and the outcome it *would* have had is appended to
+`var/counterfactual.jsonl`, against the blocking flag codes that refused it.
+(The feature is "shadow tracking" in the brief; it is named *counterfactual*
+throughout because `shadow` is reserved by the safety barrier for the banned
+ML/shadow-inference subsystem — see `tests/test_no_ml_no_shadow.py`.) That is how
+"which gate blocks winners?" becomes answerable.
+
+The counterfactual runs through the *same* code the live path uses —
+`execution.fill.simulate_fill` on both legs, `exits.ExitPolicy` for the exit,
+and a real `PaperAccount` for the money. The account is a fresh private one per
+candidate, so the isolation is structural: there is no object through which a
+shadow's cash movement could reach the live book.
+
+| key | default | effect |
+|---|---|---|
+| `COUNTERFACTUAL_ENABLED` | `true` | follow refused candidates |
+| `COUNTERFACTUAL_WINDOW_S` | `1800` | how long each one is followed |
+| `COUNTERFACTUAL_MAX_TRACKED` | `64` | concurrent trackings; every refusal past the cap is counted |
+
+Three properties are enforced by tests rather than by convention:
+
+* **No lookahead.** Every step reads `ObservationSet.as_of(t)`. A test appends a
+  +400% print *after* the window and asserts the recorded row is byte-identical.
+* **Nothing is written until it resolves.** An unresolved tracking lives in memory
+  only; a half-finished counterfactual on disk would be indistinguishable from a
+  resolved one that ended flat.
+* **No path to a live decision.** The tracker holds no market service, so it
+  cannot spend a request a live decision is waiting on — it is handed the
+  history the monitor pass already fetched, on the same tick. It holds no
+  `ResearchMemory`, so a tracked outcome cannot tilt route sizing.
+  `CounterfactualTracker.needs()` states both.
+
 On restart the engine reloads the bankroll, restores open positions with their
 route/regime/exit style/MFE/MAE, rebuilds memory from **closed** trades only,
 and resumes monitoring. **The bankroll is never reset** — `starting_bankroll_usd`
@@ -387,3 +472,42 @@ logs/             autopaper.log (gitignored)
 * **No historical replay as live** — `TELEGRAM_ALLOW_BACKLOG=false`
 * **No manufactured candidates** — with no alerts, the agent trades nothing
 * **No live execution of any kind**
+
+
+---
+
+## Running unattended
+
+`var/heartbeat.json` is written from the monitor tick every
+`HEARTBEAT_INTERVAL_S` — from the tick itself, not from a timer of its own, so
+a heartbeat cannot keep reporting OK while position management has stopped. It
+is written atomically (temp file, `fsync`, `os.replace`): without the fsync a
+crash can leave a zero-length file that reads as "no heartbeat", and a watchdog
+would restart a healthy bot.
+
+`autopaper.cli health` turns that into an exit code, and **the exit code is the
+interface**:
+
+| code | meaning | what a watchdog should do |
+|---|---|---|
+| 0 | heartbeat fresh, provider errors normal | nothing |
+| 1 | heartbeat older than `HEARTBEAT_DEGRADED_S`, or provider error rate at or above `HEALTH_ERROR_RATE_DEGRADED` | warn only |
+| 2 | heartbeat older than `HEARTBEAT_STALE_S`, missing or unparseable | restart |
+
+| key | default | effect |
+|---|---|---|
+| `HEARTBEAT_INTERVAL_S` | `30` | how often the heartbeat is written |
+| `HEARTBEAT_DEGRADED_S` | `90` | three missed beats → degraded |
+| `HEARTBEAT_STALE_S` | `300` | ten missed beats → stale |
+| `HEALTH_ERROR_RATE_DEGRADED` | `0.25` | provider error rate that counts as degraded |
+
+A provider wobble is **degraded, never stale**: restarting on it would turn it
+into a restart loop, and the runtime already marks data stale rather than
+guessing. An absent heartbeat is reported as stale, not OK — missing is
+indistinguishable from dead, so it takes the pessimistic reading.
+
+`health --startup` checks the Telegram session and chat **key names** (never
+values — this output reaches the journal), that `verify` passes, that the
+run-path isolation check passes, that `var/` and `logs/` are writable, that free
+disk exceeds `OBS_MAX_MB + OBS_DISK_MARGIN_MB`, and that `.env.local` is not
+readable by group or others. Each failure prints its exact fix.

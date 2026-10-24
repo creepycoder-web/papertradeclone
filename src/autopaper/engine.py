@@ -109,6 +109,9 @@ from .ledger import EventType, Ledger, PaperAccountState, load_json, save_json_a
 from .logging_setup import log
 from .market import MarketDataService
 from .memory import ResearchMemory
+from .health import HEARTBEAT_FILE, write_heartbeat
+from .observations import store_for
+from .counterfactual import tracker_for
 from .models import (
     AlertSnapshot,
     DataState,
@@ -921,7 +924,21 @@ class PaperTrader:
         self.config = config
         self.clock = clock or SystemClock()
         self.started_at = self.clock.now()
-        self.market = market or MarketDataService(config.market, clock=self.clock)
+        # Observation capture is attached to the market service, which is the
+        # one point every observation passes through. A market service handed
+        # in by a test or another runtime keeps whatever capture it was built
+        # with; nothing here overrides it.
+        self._last_heartbeat_write: float = 0.0
+        #: When the last alert arrived. Recording only; nothing reads it to
+        #: make a decision.
+        self._last_alert_at: float | None = None
+        self.observations = store_for(config, config.var_dir, clock=self.clock)
+        # Counterfactual tracking of REJECT/WAIT. Holds no market service and
+        # no memory, so it cannot spend a request a live decision is waiting
+        # on and cannot tilt route sizing -- see autopaper.counterfactual.
+        self.counterfactual = tracker_for(config, config.var_dir, clock=self.clock)
+        self.market = market or MarketDataService(
+            config.market, clock=self.clock, observations=self.observations)
         self.nar = nar or NarService(config.nar, clock=self.clock)
         # Prospective forward-validation capture. The boundary is created once
         # and never moved, so anything recorded here is genuinely post-
@@ -3144,11 +3161,21 @@ class PaperTrader:
         task = asyncio.current_task()
         if task is not None:
             self._inflight_candidates.add(task)
+        # Attribute every observation recorded while this candidate is being
+        # handled to its candidate_id, so a replay can group the stream by the
+        # decision it fed. Cleared in the same `finally` the task is discarded
+        # in, so a raise cannot leave later position-monitoring rows wearing
+        # this candidate's name.
+        self._last_alert_at = analysis_start
+        if self.observations is not None:
+            self.observations.attribute_to(snapshot.candidate_id)
         try:
             await self._handle_candidate_inner(snapshot, parsed, analysis_start)
         finally:
             if task is not None:
                 self._inflight_candidates.discard(task)
+            if self.observations is not None:
+                self.observations.attribute_to(None)
 
     async def _handle_candidate_inner(
         self, snapshot: AlertSnapshot, parsed, analysis_start: float
@@ -3329,6 +3356,7 @@ class PaperTrader:
                     self._notify(
                         _render_strategy_reject(gate, report.symbol or "?"), None
                     )
+            self._track_counterfactual(report, mint)
             self._record_latency(
                 stages, candidate_id=snapshot.candidate_id, mint=mint,
                 symbol=snapshot.symbol,
@@ -3345,6 +3373,7 @@ class PaperTrader:
                 report.thesis[:150],
             )
             self.journal.decision(report, self.state.trade_mode)
+            self._track_counterfactual(report, mint)
             self._record_latency(
                 stages, candidate_id=snapshot.candidate_id, mint=mint,
                 symbol=snapshot.symbol,
@@ -5251,6 +5280,90 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
         # Class-qualified on purpose: this is a staticmethod, so the bare name
         # is not in scope at call time.
         return PaperTrader.UNNAMED_REJECT_REASON
+
+    def _write_heartbeat(self) -> None:
+        """
+        Publish liveness for a watchdog, at most every ``health.interval_s``.
+
+        Written from the monitor tick rather than from a task of its own: the
+        tick IS the thing whose liveness matters, so a heartbeat produced by a
+        separate timer could keep reporting OK while position management had
+        stopped. Rate-limited here rather than by the loop interval because the
+        tick speeds up to 3s while a position is open.
+
+        Fire-and-forget: ``write_heartbeat`` never raises, and a monitoring
+        failure surfaces as staleness, which is the correct outcome.
+        """
+        now = self.clock.now()
+        if now - self._last_heartbeat_write < float(self.config.health.interval_s):
+            return
+        self._last_heartbeat_write = now
+        requests = max(1, getattr(self.market, "request_count", 0) or 0)
+        errors = getattr(self.market, "error_count", 0) or 0
+        write_heartbeat(self.config.var_dir / HEARTBEAT_FILE, {
+            "at": now,
+            "state": getattr(self.state.run_state, "value",
+                             str(self.state.run_state)),
+            "open_positions": len(self.account.open_positions()),
+            "last_alert_at": self._last_alert_at,
+            "last_market_fetch_at": getattr(self.market, "last_success_at", None),
+            "provider_error_rate": round(errors / requests, 4),
+            "pid": os.getpid(),
+        })
+
+    def _track_counterfactual(self, report: Any, mint: str) -> None:
+        """
+        Follow a refused candidate so its counterfactual can be measured.
+
+        FIRE-AND-FORGET. Counterfactual tracking is research telemetry, so a failure
+        here is logged and dropped: it must never turn a REJECT into an
+        exception on the alert path.
+
+        The reasons recorded are the BLOCKING flag codes the strategy already
+        produced. Nothing is re-derived, so the counterfactual row attributes the miss
+        to the same gate the journal does.
+        """
+        if self.counterfactual is None:
+            return
+        try:
+            blocking = tuple(
+                f.code for f in getattr(report, "risk_flags", ())
+                if getattr(f, "severity", "") == "block"
+            )
+            features = getattr(report, "features", {}) or {}
+            self.counterfactual.track(
+                candidate_id=report.candidate_id,
+                mint=mint,
+                symbol=report.symbol or "",
+                decision=report.decision,
+                route=report.route,
+                regime=report.regime,
+                reject_reasons=blocking or (report.decision.value.lower(),),
+                price=features.get("price"),
+                liquidity_usd=features.get("liquidity_usd"),
+                now=self.clock.now(),
+            )
+        except Exception as exc:  # noqa: BLE001 - telemetry must not raise
+            log("ERROR", "counterfactual tracking failed (%s): %s",
+                type(exc).__name__, exc)
+
+    def _resolve_counterfactuals(self) -> None:
+        """
+        Advance the open counterfactuals against history the live loop ALREADY holds.
+
+        No fetch of its own, which is what gives live work rate-limit
+        priority: a counterfactual can only ever see a print some live decision or
+        position monitor had already paid for.
+        """
+        if self.counterfactual is None:
+            return
+        try:
+            now = self.clock.now()
+            for mint in self.counterfactual.tracked_mints():
+                self.counterfactual.resolve(self.market.history(mint), now, mint=mint)
+        except Exception as exc:  # noqa: BLE001 - telemetry must not raise
+            log("ERROR", "counterfactual resolve failed (%s): %s",
+                type(exc).__name__, exc)
 
     def _record_reject_reason(self, report: Any) -> str:
         """Count this rejection under its own cause and return that cause."""
@@ -8831,6 +8944,12 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
             try:
                 self._service_control()
                 await self.monitor_once()
+                self._write_heartbeat()
+                # Counterfactuals advance on the SAME tick as the positions, and only
+                # against history the monitor pass already fetched. There is no
+                # separate counterfactual poll, which is what keeps live work ahead of
+                # research in the rate limiter.
+                self._resolve_counterfactuals()
             except Exception as exc:  # noqa: BLE001
                 log("ERROR", "monitor cycle failed: %r", exc)
             if self._flatten_requested:
@@ -9616,6 +9735,15 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
         self.account.update_peak(equity)
         self.account.state.last_heartbeat = self.clock.now()
         self.persist()
+        # Flush the observation buffer on the way out. Capture is buffered on a
+        # 5s interval, so an orderly stop must flush or the last few seconds of
+        # the stream are lost for no reason. Guarded: a capture failure must not
+        # be able to interrupt a shutdown that still has state to persist.
+        if self.observations is not None:
+            try:
+                self.observations.close()
+            except Exception as exc:  # noqa: BLE001 - telemetry must not raise
+                log("ERROR", "observation flush on shutdown failed: %s", exc)
         if self.listener is not None:
             await self.listener.stop()
         if self._bot_task is not None and not self._bot_task.done():

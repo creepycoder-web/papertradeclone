@@ -50,6 +50,7 @@ from .ledger import Ledger, load_json, save_json_atomic
 from .logging_setup import configure as configure_logging
 from .logging_setup import log
 from .memory import ResearchMemory
+from .run_isolation import RunPathViolation, assert_run_path_isolated
 from .safety import AGENT_ID, STRATEGY, audit
 from .strategy_profile import label as _sp_label, max_hold_s as _sp_max_hold_s
 from .strategy_profile import parse_profile as _sp_parse
@@ -86,6 +87,25 @@ def _trader(cfg: Config):
 
 def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     configure_logging(cfg.log_dir, args.log_level)
+    # CONTAINMENT: refuse to start if real-execution capability is live.
+    #
+    # G1 (var/audit.md) established that `solders` is reachable in the import
+    # graph from this function, via engine.py:90 -> execution/real.py:63 ->
+    # execution/solana.py:327, the last two being lazy in-function imports.
+    # That graph cannot be cleaned without a refactor nobody asked for, so what
+    # is enforced here instead is the fact the paper deployment's safety
+    # actually rests on: the capability-bearing distributions are NOT INSTALLED.
+    #
+    # Checked BEFORE the engine is constructed, so a machine that has gained the
+    # capability never reaches the alert, decision, sizing or exit paths. It is
+    # a startup refusal, not a trading rule: nothing below this line behaves
+    # differently because of it.
+    try:
+        assert_run_path_isolated()
+    except RunPathViolation as exc:
+        log("SYSTEM", "refusing to start: %s", exc)
+        print(f"\nREFUSED: {exc}\n", file=sys.stderr)
+        return 6
     # --cli MUST reach the config before the engine is constructed.
     #
     # PaperTrader builds the Telegram bot (transport, notifier, poller, queue)
@@ -1475,6 +1495,39 @@ def cmd_unlatch(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_health(cfg: Config, args: argparse.Namespace) -> int:
+    """
+    Report health for a watchdog. READ-ONLY; starts nothing.
+
+    Exit codes ARE the interface: 0 ok, 1 degraded, 2 stale or missing. The
+    health timer restarts the bot on 2 only -- restarting on a provider wobble
+    would turn it into a restart loop.
+
+    ``--startup`` runs the pre-flight ops checks instead and exits non-zero if
+    any fails. It reports KEY NAMES only, never values: this output reaches the
+    terminal and, through systemd, the journal.
+    """
+    from . import health as health_mod
+
+    if getattr(args, "startup", False):
+        checks = health_mod.startup_checks(cfg)
+        print(health_mod.render(checks))
+        return 0 if all(c.ok for c in checks) else 1
+
+    path = cfg.var_dir / health_mod.HEARTBEAT_FILE
+    verdict = health_mod.assess(
+        health_mod.read_heartbeat(path),
+        now=time.time(),
+        degraded_s=cfg.health.degraded_s,
+        stale_s=cfg.health.stale_s,
+        error_rate_degraded=cfg.health.error_rate_degraded,
+    )
+    print(f"HEALTH: {verdict.label}")
+    for line in verdict.lines:
+        print(f"  {line}")
+    return verdict.code
+
+
 def cmd_config(cfg: Config, args: argparse.Namespace) -> int:
     print(describe(cfg))
     print(json.dumps(cfg.as_dict(), indent=2, default=str))
@@ -1704,6 +1757,15 @@ def build_parser() -> argparse.ArgumentParser:
     ul.set_defaults(func=cmd_unlatch)
     c = sub.add_parser("config", help="show effective configuration")
     c.set_defaults(func=cmd_config)
+    hl = sub.add_parser(
+        "health",
+        help="report health for a watchdog (exit 0 ok / 1 degraded / 2 stale)",
+    )
+    hl.add_argument(
+        "--startup", action="store_true",
+        help="run the pre-flight ops checks instead of reading the heartbeat",
+    )
+    hl.set_defaults(func=cmd_health)
     v = sub.add_parser("verify", help="migration + safety audit")
     v.add_argument("--json", action="store_true")
     v.set_defaults(func=cmd_verify)

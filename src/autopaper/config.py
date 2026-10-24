@@ -843,6 +843,93 @@ class NarConfig:
 
 
 @dataclass(frozen=True)
+class CounterfactualConfig:
+    """
+    Counterfactual tracking of the decisions the agent did NOT take.
+
+    * ``enabled`` True. It is the only way to answer "which gate blocks
+      winners", and it changes no trading decision: see
+      :mod:`autopaper.counterfactual` for why a counterfactual has no path to a live decision
+      or to ``ResearchMemory``.
+    * ``window_s`` 1800 -> how long a refused candidate is followed. Thirty
+      minutes is long enough to cover the whole life of a memecoin entry under
+      every exit style the runtime declares (the longest cap is 900s) and short
+      enough that the tracked set turns over.
+    * ``max_tracked`` 64 -> concurrent counterfactuals. A busy channel degrades by
+      tracking fewer candidates rather than by growing without bound, and every
+      refused candidate increments a counter so lost coverage is a number.
+    """
+
+    enabled: bool = True
+    window_s: float = 1800.0
+    max_tracked: int = 64
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ObservationsConfig:
+    """
+    Append-only capture of every market observation, for ``replay``.
+
+    * ``enabled`` True. Capture is the input ``replay`` reads, and an
+      unattended run that forgot to turn it on produces weeks of trading with
+      nothing to analyse afterwards. It is telemetry only: see
+      :mod:`autopaper.observations` for why it can never refuse an observation
+      the agent needs in order to decide.
+    * ``max_mb`` 2000 -> the total disk the stream may occupy. On reaching it
+      the OLDEST ROTATED file is deleted first; the active file is never
+      deleted, and no file outside the stream's own directory is ever touched.
+    * ``rotate_mb`` 64 -> the size at which the active file is rotated. Chosen
+      so a single file stays readable with ordinary tools while the rotation
+      count over weeks stays in the hundreds, not the millions. Not derived
+      from ``max_mb``: the two answer different questions.
+    """
+
+    enabled: bool = True
+    max_mb: float = 2000.0
+    rotate_mb: float = 64.0
+    #: Seconds between flushes of the write buffer. 5s because the stream is
+    #: telemetry: an fsync per observation is latency the trading loop waits
+    #: behind, and losing the last few seconds to a kill -9 costs a replay
+    #: nothing. An orderly stop flushes, so it loses nothing at all.
+    flush_s: float = 5.0
+    #: Free disk required ON TOP of ``max_mb`` before `health --startup`
+    #: passes. The stream is allowed to grow to its cap, so a machine with
+    #: exactly ``max_mb`` free is already full.
+    disk_margin_mb: float = 500.0
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class HealthConfig:
+    """
+    Watchdog thresholds. The exit code is the interface; see
+    :mod:`autopaper.health`.
+
+    * ``interval_s`` 30 -> how often the heartbeat is written.
+    * ``degraded_s`` 90 -> three missed beats is a warning, not a restart.
+    * ``stale_s`` 300 -> ten missed beats means the loop is gone; a watchdog
+      restarts on this and on nothing else.
+    * ``error_rate_degraded`` 0.25 -> provider errors at or above this are
+      DEGRADED, never STALE: restarting on a provider wobble would turn it into
+      a restart loop, and the runtime already marks data stale rather than
+      guessing.
+    """
+
+    interval_s: float = 30.0
+    degraded_s: float = 90.0
+    stale_s: float = 300.0
+    error_rate_degraded: float = 0.25
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class Config:
     agent_id: str
     root: Path
@@ -862,6 +949,9 @@ class Config:
     decision: DecisionConfig
     exits: ExitConfig
     real: RealConfig = RealConfig()
+    observations: ObservationsConfig = ObservationsConfig()
+    counterfactual: CounterfactualConfig = CounterfactualConfig()
+    health: HealthConfig = HealthConfig()
     #: CLI-only mode. The trading core and the upstream CHANNEL listener keep
     #: working; every OUTBOUND Telegram bot call is disabled, so nothing the bot
     #: does can sit on the critical path. Telegram is two things: the channel
@@ -921,6 +1011,9 @@ class Config:
             "decision": self.decision.as_dict(),
             "exits": self.exits.as_dict(),
             "real": self.real.as_dict(),
+            "observations": self.observations.as_dict(),
+            "counterfactual": self.counterfactual.as_dict(),
+            "health": self.health.as_dict(),
             "dashboard_interval_s": self.dashboard_interval_s,
         }
 
@@ -1361,6 +1454,34 @@ def build_config(root: Path | str | None = None) -> Config:
         ),
         exits=ExitConfig(disaster_cap_pct=risk.disaster_cap_pct),
         real=real,
+        observations=ObservationsConfig(
+            enabled=_as_bool(get("OBS_ENABLED"),
+                             ObservationsConfig.enabled),
+            max_mb=_as_float(get("OBS_MAX_MB"),
+                             ObservationsConfig.max_mb),
+            rotate_mb=_as_float(get("OBS_ROTATE_MB"),
+                                ObservationsConfig.rotate_mb),
+            flush_s=_as_float(get("OBS_FLUSH_S"), ObservationsConfig.flush_s),
+            disk_margin_mb=_as_float(get("OBS_DISK_MARGIN_MB"),
+                                     ObservationsConfig.disk_margin_mb),
+        ),
+        health=HealthConfig(
+            interval_s=_as_float(get("HEARTBEAT_INTERVAL_S"),
+                                 HealthConfig.interval_s),
+            degraded_s=_as_float(get("HEARTBEAT_DEGRADED_S"),
+                                 HealthConfig.degraded_s),
+            stale_s=_as_float(get("HEARTBEAT_STALE_S"), HealthConfig.stale_s),
+            error_rate_degraded=_as_float(
+                get("HEALTH_ERROR_RATE_DEGRADED"),
+                HealthConfig.error_rate_degraded),
+        ),
+        counterfactual=CounterfactualConfig(
+            enabled=_as_bool(get("COUNTERFACTUAL_ENABLED"), CounterfactualConfig.enabled),
+            window_s=_as_float(get("COUNTERFACTUAL_WINDOW_S"),
+                               CounterfactualConfig.window_s),
+            max_tracked=_as_int(get("COUNTERFACTUAL_MAX_TRACKED"))
+            or CounterfactualConfig.max_tracked,
+        ),
         env=env,
     )
 
