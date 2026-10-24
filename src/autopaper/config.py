@@ -890,6 +890,11 @@ class ObservationsConfig:
     enabled: bool = True
     max_mb: float = 2000.0
     rotate_mb: float = 64.0
+    #: Seconds between flushes of the write buffer. 5s because the stream is
+    #: telemetry: an fsync per observation is latency the trading loop waits
+    #: behind, and losing the last few seconds to a kill -9 costs a replay
+    #: nothing. An orderly stop flushes, so it loses nothing at all.
+    flush_s: float = 5.0
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -1425,6 +1430,7 @@ def build_config(root: Path | str | None = None) -> Config:
                              ObservationsConfig.max_mb),
             rotate_mb=_as_float(get("OBS_ROTATE_MB"),
                                 ObservationsConfig.rotate_mb),
+            flush_s=_as_float(get("OBS_FLUSH_S"), ObservationsConfig.flush_s),
         ),
         counterfactual=CounterfactualConfig(
             enabled=_as_bool(get("COUNTERFACTUAL_ENABLED"), CounterfactualConfig.enabled),

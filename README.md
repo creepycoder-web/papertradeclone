@@ -350,7 +350,26 @@ agent needed in order to decide.
 |---|---|---|
 | `OBS_ENABLED` | `true` | capture on. Off means replay has nothing to read. |
 | `OBS_ROTATE_MB` | `64` | size at which the active file rotates |
-| `OBS_MAX_MB` | `2000` | total disk cap for the stream |
+| `OBS_MAX_MB` | `2000` | total disk cap for the stream, counting **compressed** rotated files |
+| `OBS_FLUSH_S` | `5` | flush interval for the write buffer |
+
+Each row carries `schema_version`, the `candidate_id` it was recorded under
+(`null` for position monitoring, which has no candidate) and the observation's
+own `received_at`. Rows are serialised from the `Observation` **dataclass
+fields**, not from `as_dict()` — that reporting view omits `volume_24h_usd`, so
+capturing through it silently dropped a field a replay would have decided on.
+
+Rotated files are gzipped (`observations-<stamp>.jsonl.gz`, ~10x smaller), and
+the cap counts the compressed size, so the same disk holds far more history.
+Writes are buffered and flushed every `OBS_FLUSH_S` and on shutdown: an fsync
+per observation is latency the trading loop waits behind, and losing a few
+seconds of telemetry to a `kill -9` costs a replay nothing.
+
+`load_observations(paths)` returns `{candidate_id: ObservationSet}`. A malformed
+or truncated line is **skipped and counted**, never raised on — the writer can
+be killed mid-row, so a truncated final line is the expected shape of a
+crash-interrupted session, and a loader that raised would make every such
+session unreadable.
 
 At the cap the **oldest rotated** file is deleted first. The active file is
 never deleted, and only files matching the stream's own

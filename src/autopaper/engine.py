@@ -3156,11 +3156,20 @@ class PaperTrader:
         task = asyncio.current_task()
         if task is not None:
             self._inflight_candidates.add(task)
+        # Attribute every observation recorded while this candidate is being
+        # handled to its candidate_id, so a replay can group the stream by the
+        # decision it fed. Cleared in the same `finally` the task is discarded
+        # in, so a raise cannot leave later position-monitoring rows wearing
+        # this candidate's name.
+        if self.observations is not None:
+            self.observations.attribute_to(snapshot.candidate_id)
         try:
             await self._handle_candidate_inner(snapshot, parsed, analysis_start)
         finally:
             if task is not None:
                 self._inflight_candidates.discard(task)
+            if self.observations is not None:
+                self.observations.attribute_to(None)
 
     async def _handle_candidate_inner(
         self, snapshot: AlertSnapshot, parsed, analysis_start: float
@@ -9689,6 +9698,15 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
         self.account.update_peak(equity)
         self.account.state.last_heartbeat = self.clock.now()
         self.persist()
+        # Flush the observation buffer on the way out. Capture is buffered on a
+        # 5s interval, so an orderly stop must flush or the last few seconds of
+        # the stream are lost for no reason. Guarded: a capture failure must not
+        # be able to interrupt a shutdown that still has state to persist.
+        if self.observations is not None:
+            try:
+                self.observations.close()
+            except Exception as exc:  # noqa: BLE001 - telemetry must not raise
+                log("ERROR", "observation flush on shutdown failed: %s", exc)
         if self.listener is not None:
             await self.listener.stop()
         if self._bot_task is not None and not self._bot_task.done():

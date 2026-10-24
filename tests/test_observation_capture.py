@@ -50,6 +50,9 @@ def test_one_json_line_per_observation(tmp_path):
     s = store(tmp_path)
     s.record(MINT, obs(T0))
     s.record(MINT, obs(T0 + 5, price=2.0e-4))
+    # D1 replaced flush-per-row with interval buffering (obs_flush_s), so a
+    # reader must flush before reading. close() is the documented way.
+    s.close()
     rows = lines(s.active_path)
     assert len(rows) == 2
     assert rows[0]["mint"] == MINT
@@ -63,6 +66,7 @@ def test_the_stream_is_append_only_across_reopens(tmp_path):
     s.close()
     again = store(tmp_path)
     again.record(MINT, obs(T0 + 1))
+    again.close()                      # D1: buffered until flushed
     assert len(lines(again.active_path)) == 2
 
 
@@ -169,6 +173,7 @@ def test_every_recorded_observation_reaches_the_store(tmp_path):
     s = store(tmp_path)
     svc = _service(tmp_path, obs(T0), s)
     svc.quote(MINT)
+    s.close()                          # D1: buffered until flushed
     assert len(lines(s.active_path)) == 1
     assert len(svc.history(MINT)) == 1
 
