@@ -359,6 +359,42 @@ the ledgers and `paper_account.json` live in `var/` too, and a disk-pressure
 cleanup able to reach those could destroy the audit trail to save space. A test
 asserts it cannot.
 
+### Counterfactual tracking
+
+Every gate trades false positives for false negatives, and a ledger of taken
+trades can only show the first kind. So each **REJECT** and **WAIT** is followed
+for `COUNTERFACTUAL_WINDOW_S` and the outcome it *would* have had is appended to
+`var/counterfactual.jsonl`, against the blocking flag codes that refused it.
+(The feature is "shadow tracking" in the brief; it is named *counterfactual*
+throughout because `shadow` is reserved by the safety barrier for the banned
+ML/shadow-inference subsystem — see `tests/test_no_ml_no_shadow.py`.) That is how
+"which gate blocks winners?" becomes answerable.
+
+The counterfactual runs through the *same* code the live path uses —
+`execution.fill.simulate_fill` on both legs, `exits.ExitPolicy` for the exit,
+and a real `PaperAccount` for the money. The account is a fresh private one per
+candidate, so the isolation is structural: there is no object through which a
+shadow's cash movement could reach the live book.
+
+| key | default | effect |
+|---|---|---|
+| `COUNTERFACTUAL_ENABLED` | `true` | follow refused candidates |
+| `COUNTERFACTUAL_WINDOW_S` | `1800` | how long each one is followed |
+| `COUNTERFACTUAL_MAX_TRACKED` | `64` | concurrent trackings; every refusal past the cap is counted |
+
+Three properties are enforced by tests rather than by convention:
+
+* **No lookahead.** Every step reads `ObservationSet.as_of(t)`. A test appends a
+  +400% print *after* the window and asserts the recorded row is byte-identical.
+* **Nothing is written until it resolves.** An unresolved tracking lives in memory
+  only; a half-finished counterfactual on disk would be indistinguishable from a
+  resolved one that ended flat.
+* **No path to a live decision.** The tracker holds no market service, so it
+  cannot spend a request a live decision is waiting on — it is handed the
+  history the monitor pass already fetched, on the same tick. It holds no
+  `ResearchMemory`, so a tracked outcome cannot tilt route sizing.
+  `CounterfactualTracker.needs()` states both.
+
 On restart the engine reloads the bankroll, restores open positions with their
 route/regime/exit style/MFE/MAE, rebuilds memory from **closed** trades only,
 and resumes monitoring. **The bankroll is never reset** — `starting_bankroll_usd`

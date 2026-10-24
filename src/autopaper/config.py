@@ -843,6 +843,32 @@ class NarConfig:
 
 
 @dataclass(frozen=True)
+class CounterfactualConfig:
+    """
+    Counterfactual tracking of the decisions the agent did NOT take.
+
+    * ``enabled`` True. It is the only way to answer "which gate blocks
+      winners", and it changes no trading decision: see
+      :mod:`autopaper.counterfactual` for why a counterfactual has no path to a live decision
+      or to ``ResearchMemory``.
+    * ``window_s`` 1800 -> how long a refused candidate is followed. Thirty
+      minutes is long enough to cover the whole life of a memecoin entry under
+      every exit style the runtime declares (the longest cap is 900s) and short
+      enough that the tracked set turns over.
+    * ``max_tracked`` 64 -> concurrent counterfactuals. A busy channel degrades by
+      tracking fewer candidates rather than by growing without bound, and every
+      refused candidate increments a counter so lost coverage is a number.
+    """
+
+    enabled: bool = True
+    window_s: float = 1800.0
+    max_tracked: int = 64
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class ObservationsConfig:
     """
     Append-only capture of every market observation, for ``replay``.
@@ -890,6 +916,7 @@ class Config:
     exits: ExitConfig
     real: RealConfig = RealConfig()
     observations: ObservationsConfig = ObservationsConfig()
+    counterfactual: CounterfactualConfig = CounterfactualConfig()
     #: CLI-only mode. The trading core and the upstream CHANNEL listener keep
     #: working; every OUTBOUND Telegram bot call is disabled, so nothing the bot
     #: does can sit on the critical path. Telegram is two things: the channel
@@ -950,6 +977,7 @@ class Config:
             "exits": self.exits.as_dict(),
             "real": self.real.as_dict(),
             "observations": self.observations.as_dict(),
+            "counterfactual": self.counterfactual.as_dict(),
             "dashboard_interval_s": self.dashboard_interval_s,
         }
 
@@ -1397,6 +1425,13 @@ def build_config(root: Path | str | None = None) -> Config:
                              ObservationsConfig.max_mb),
             rotate_mb=_as_float(get("OBS_ROTATE_MB"),
                                 ObservationsConfig.rotate_mb),
+        ),
+        counterfactual=CounterfactualConfig(
+            enabled=_as_bool(get("COUNTERFACTUAL_ENABLED"), CounterfactualConfig.enabled),
+            window_s=_as_float(get("COUNTERFACTUAL_WINDOW_S"),
+                               CounterfactualConfig.window_s),
+            max_tracked=_as_int(get("COUNTERFACTUAL_MAX_TRACKED"))
+            or CounterfactualConfig.max_tracked,
         ),
         env=env,
     )

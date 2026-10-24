@@ -110,6 +110,7 @@ from .logging_setup import log
 from .market import MarketDataService
 from .memory import ResearchMemory
 from .observations import store_for
+from .counterfactual import tracker_for
 from .models import (
     AlertSnapshot,
     DataState,
@@ -927,6 +928,10 @@ class PaperTrader:
         # in by a test or another runtime keeps whatever capture it was built
         # with; nothing here overrides it.
         self.observations = store_for(config, config.var_dir, clock=self.clock)
+        # Counterfactual tracking of REJECT/WAIT. Holds no market service and
+        # no memory, so it cannot spend a request a live decision is waiting
+        # on and cannot tilt route sizing -- see autopaper.counterfactual.
+        self.counterfactual = tracker_for(config, config.var_dir, clock=self.clock)
         self.market = market or MarketDataService(
             config.market, clock=self.clock, observations=self.observations)
         self.nar = nar or NarService(config.nar, clock=self.clock)
@@ -3336,6 +3341,7 @@ class PaperTrader:
                     self._notify(
                         _render_strategy_reject(gate, report.symbol or "?"), None
                     )
+            self._track_counterfactual(report, mint)
             self._record_latency(
                 stages, candidate_id=snapshot.candidate_id, mint=mint,
                 symbol=snapshot.symbol,
@@ -3352,6 +3358,7 @@ class PaperTrader:
                 report.thesis[:150],
             )
             self.journal.decision(report, self.state.trade_mode)
+            self._track_counterfactual(report, mint)
             self._record_latency(
                 stages, candidate_id=snapshot.candidate_id, mint=mint,
                 symbol=snapshot.symbol,
@@ -5258,6 +5265,60 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
         # Class-qualified on purpose: this is a staticmethod, so the bare name
         # is not in scope at call time.
         return PaperTrader.UNNAMED_REJECT_REASON
+
+    def _track_counterfactual(self, report: Any, mint: str) -> None:
+        """
+        Follow a refused candidate so its counterfactual can be measured.
+
+        FIRE-AND-FORGET. Counterfactual tracking is research telemetry, so a failure
+        here is logged and dropped: it must never turn a REJECT into an
+        exception on the alert path.
+
+        The reasons recorded are the BLOCKING flag codes the strategy already
+        produced. Nothing is re-derived, so the counterfactual row attributes the miss
+        to the same gate the journal does.
+        """
+        if self.counterfactual is None:
+            return
+        try:
+            blocking = tuple(
+                f.code for f in getattr(report, "risk_flags", ())
+                if getattr(f, "severity", "") == "block"
+            )
+            features = getattr(report, "features", {}) or {}
+            self.counterfactual.track(
+                candidate_id=report.candidate_id,
+                mint=mint,
+                symbol=report.symbol or "",
+                decision=report.decision,
+                route=report.route,
+                regime=report.regime,
+                reject_reasons=blocking or (report.decision.value.lower(),),
+                price=features.get("price"),
+                liquidity_usd=features.get("liquidity_usd"),
+                now=self.clock.now(),
+            )
+        except Exception as exc:  # noqa: BLE001 - telemetry must not raise
+            log("ERROR", "counterfactual tracking failed (%s): %s",
+                type(exc).__name__, exc)
+
+    def _resolve_counterfactuals(self) -> None:
+        """
+        Advance the open counterfactuals against history the live loop ALREADY holds.
+
+        No fetch of its own, which is what gives live work rate-limit
+        priority: a counterfactual can only ever see a print some live decision or
+        position monitor had already paid for.
+        """
+        if self.counterfactual is None:
+            return
+        try:
+            now = self.clock.now()
+            for mint in self.counterfactual.tracked_mints():
+                self.counterfactual.resolve(self.market.history(mint), now, mint=mint)
+        except Exception as exc:  # noqa: BLE001 - telemetry must not raise
+            log("ERROR", "counterfactual resolve failed (%s): %s",
+                type(exc).__name__, exc)
 
     def _record_reject_reason(self, report: Any) -> str:
         """Count this rejection under its own cause and return that cause."""
@@ -8838,6 +8899,11 @@ max_concurrent=max(1, int(self.config.real.public_rpc_max_concurrency)),
             try:
                 self._service_control()
                 await self.monitor_once()
+                # Counterfactuals advance on the SAME tick as the positions, and only
+                # against history the monitor pass already fetched. There is no
+                # separate counterfactual poll, which is what keeps live work ahead of
+                # research in the rate limiter.
+                self._resolve_counterfactuals()
             except Exception as exc:  # noqa: BLE001
                 log("ERROR", "monitor cycle failed: %r", exc)
             if self._flatten_requested:
