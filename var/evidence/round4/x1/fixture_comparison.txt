@@ -1,0 +1,27 @@
+=== ExitConfig defaults that matter ===
+  fast_failure_stop_pct = -12.0
+  disaster_cap_pct = -45.0
+  momentum_collapse_drop_pct = -18.0
+  structure_break_pct = -14.0
+  fast_failure_window_s = 75.0
+  momentum_trail_pct = -22.0
+  runner_arm_pct = 25.0
+  runner_trail_pct = -18.0
+
+=== path: rise_to_150 (golden runner shape)  rets=[5, 20, 60, 150, 150, 150] ===
+  CURRENT (live path today)          NO EXIT (held to end of path)
+  A: momentum+structure wired        NO EXIT (held to end of path)
+  B: TP snapshot propagated(+30)     t+45s at +60% -> tp30
+  C: STRATEGY_PROFILE=L25_TP100      t+60s at +150% -> tp100
+
+=== path: pump_to_80_fade_to_5  rets=[10, 80, 40, 5, 5, 5] ===
+  CURRENT (live path today)          NO EXIT (held to end of path)
+  A: momentum+structure wired        t+60s at +5% -> momentum_collapse
+  B: TP snapshot propagated(+30)     t+30s at +80% -> tp30
+  C: STRATEGY_PROFILE=L25_TP100      NO EXIT (held to end of path)
+
+=== path: fast_failure  rets=[-5, -13, -13] ===
+  CURRENT (live path today)          t+30s at -13% -> fast_failure_stop
+  A: momentum+structure wired        t+30s at -13% -> fast_failure_stop
+  B: TP snapshot propagated(+30)     t+30s at -13% -> fast_failure_stop
+  C: STRATEGY_PROFILE=L25_TP100      t+30s at -13% -> fast_failure_stop
