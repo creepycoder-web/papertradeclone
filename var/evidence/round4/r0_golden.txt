@@ -1,0 +1,32 @@
+....                                                                     [100%]
+=============================== warnings summary ===============================
+tests/test_incident_paper_buy.py:76
+  /home/user/papertradeclone/tests/test_incident_paper_buy.py:76: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_incident_paper_buy.py:77
+  /home/user/papertradeclone/tests/test_incident_paper_buy.py:77: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.integrity,
+
+tests/test_incident_paper_buy.py:78
+  /home/user/papertradeclone/tests/test_incident_paper_buy.py:78: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.strategy,
+
+tests/test_paper_smoke.py:55
+  /home/user/papertradeclone/tests/test_paper_smoke.py:55: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_paper_smoke.py:56
+  /home/user/papertradeclone/tests/test_paper_smoke.py:56: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.integrity,
+
+tests/test_golden_run.py:49
+  /home/user/papertradeclone/tests/test_golden_run.py:49: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = [pytest.mark.integrity]
+
+tests/test_golden_run.py:424
+  /home/user/papertradeclone/tests/test_golden_run.py:424: PytestUnknownMarkWarning: Unknown pytest.mark.slow - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.slow
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+4 passed, 7 warnings in 77.75s (0:01:17)

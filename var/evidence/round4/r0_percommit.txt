@@ -1,0 +1,178 @@
+............................................s........................... [ 10%]
+........................................................................ [ 21%]
+..............................................ss........................ [ 32%]
+........................................................................ [ 43%]
+........................................................................ [ 54%]
+........................................................................ [ 65%]
+........................................................................ [ 76%]
+........................................................................ [ 87%]
+..................................s..................................... [ 98%]
+........                                                                 [100%]
+=============================== warnings summary ===============================
+tests/test_safety.py:47
+  /home/user/papertradeclone/tests/test_safety.py:47: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_safety.py:48
+  /home/user/papertradeclone/tests/test_safety.py:48: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.integrity,
+
+tests/test_safety.py:49
+  /home/user/papertradeclone/tests/test_safety.py:49: PytestUnknownMarkWarning: Unknown pytest.mark.safety - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.safety,
+
+tests/test_safety.py:50
+  /home/user/papertradeclone/tests/test_safety.py:50: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.strategy,
+
+tests/test_safety_architecture.py:28
+  /home/user/papertradeclone/tests/test_safety_architecture.py:28: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_safety_architecture.py:29
+  /home/user/papertradeclone/tests/test_safety_architecture.py:29: PytestUnknownMarkWarning: Unknown pytest.mark.safety - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.safety,
+
+tests/test_same_market_safety.py:36
+  /home/user/papertradeclone/tests/test_same_market_safety.py:36: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_same_market_safety.py:37
+  /home/user/papertradeclone/tests/test_same_market_safety.py:37: PytestUnknownMarkWarning: Unknown pytest.mark.safety - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.safety,
+
+tests/test_same_market_safety.py:38
+  /home/user/papertradeclone/tests/test_same_market_safety.py:38: PytestUnknownMarkWarning: Unknown pytest.mark.same_market - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.same_market,
+
+tests/test_same_market_safety.py:39
+  /home/user/papertradeclone/tests/test_same_market_safety.py:39: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.strategy,
+
+tests/test_paper_live.py:76
+tests/test_paper_live.py:76
+  /home/user/papertradeclone/tests/test_paper_live.py:76: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_paper_live.py:77
+tests/test_paper_live.py:77
+  /home/user/papertradeclone/tests/test_paper_live.py:77: PytestUnknownMarkWarning: Unknown pytest.mark.paper_live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.paper_live,
+
+tests/test_paper_live.py:78
+tests/test_paper_live.py:78
+  /home/user/papertradeclone/tests/test_paper_live.py:78: PytestUnknownMarkWarning: Unknown pytest.mark.safety - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.safety,
+
+tests/test_paper_live.py:79
+tests/test_paper_live.py:79
+  /home/user/papertradeclone/tests/test_paper_live.py:79: PytestUnknownMarkWarning: Unknown pytest.mark.same_market - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.same_market,
+
+tests/test_paper_live.py:80
+tests/test_paper_live.py:80
+  /home/user/papertradeclone/tests/test_paper_live.py:80: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.strategy,
+
+tests/test_quote_none_safety.py:131
+  /home/user/papertradeclone/tests/test_quote_none_safety.py:131: PytestUnknownMarkWarning: Unknown pytest.mark.paper_live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.paper_live
+
+tests/test_quote_none_safety.py:156
+  /home/user/papertradeclone/tests/test_quote_none_safety.py:156: PytestUnknownMarkWarning: Unknown pytest.mark.paper_live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.paper_live
+
+tests/test_quote_none_safety.py:251
+  /home/user/papertradeclone/tests/test_quote_none_safety.py:251: PytestUnknownMarkWarning: Unknown pytest.mark.paper_live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.paper_live
+
+tests/test_single_writer.py:40
+  /home/user/papertradeclone/tests/test_single_writer.py:40: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.integrity
+
+tests/test_sizing_accounting.py:32
+  /home/user/papertradeclone/tests/test_sizing_accounting.py:32: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.strategy
+
+tests/test_trading_logic_bugfixes.py:39
+  /home/user/papertradeclone/tests/test_trading_logic_bugfixes.py:39: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = [pytest.mark.strategy, pytest.mark.integrity]
+
+tests/test_trading_logic_bugfixes.py:39
+  /home/user/papertradeclone/tests/test_trading_logic_bugfixes.py:39: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = [pytest.mark.strategy, pytest.mark.integrity]
+
+tests/test_no_lookahead.py:24
+  /home/user/papertradeclone/tests/test_no_lookahead.py:24: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.strategy
+
+tests/test_counterfactual_tracking.py:29
+  /home/user/papertradeclone/tests/test_counterfactual_tracking.py:29: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.integrity
+
+tests/test_fill.py:19
+  /home/user/papertradeclone/tests/test_fill.py:19: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.execution
+
+tests/test_execution_price_integrity.py:53
+  /home/user/papertradeclone/tests/test_execution_price_integrity.py:53: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.execution
+
+tests/test_price_integrity.py:29
+  /home/user/papertradeclone/tests/test_price_integrity.py:29: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_price_integrity.py:30
+  /home/user/papertradeclone/tests/test_price_integrity.py:30: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.strategy,
+
+tests/test_exits.py:17
+  /home/user/papertradeclone/tests/test_exits.py:17: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.strategy
+
+tests/test_observation_capture.py:22
+  /home/user/papertradeclone/tests/test_observation_capture.py:22: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.integrity
+
+tests/test_run_path_isolation.py:41
+  /home/user/papertradeclone/tests/test_run_path_isolation.py:41: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.integrity
+
+tests/test_observation_replay_roundtrip.py:36
+  /home/user/papertradeclone/tests/test_observation_replay_roundtrip.py:36: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.integrity
+
+tests/test_health.py:28
+  /home/user/papertradeclone/tests/test_health.py:28: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.integrity
+
+tests/test_incident_paper_buy.py:76
+  /home/user/papertradeclone/tests/test_incident_paper_buy.py:76: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_incident_paper_buy.py:77
+  /home/user/papertradeclone/tests/test_incident_paper_buy.py:77: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.integrity,
+
+tests/test_incident_paper_buy.py:78
+  /home/user/papertradeclone/tests/test_incident_paper_buy.py:78: PytestUnknownMarkWarning: Unknown pytest.mark.strategy - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.strategy,
+
+tests/test_paper_smoke.py:55
+  /home/user/papertradeclone/tests/test_paper_smoke.py:55: PytestUnknownMarkWarning: Unknown pytest.mark.execution - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.execution,
+
+tests/test_paper_smoke.py:56
+  /home/user/papertradeclone/tests/test_paper_smoke.py:56: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytest.mark.integrity,
+
+tests/test_golden_run.py:49
+  /home/user/papertradeclone/tests/test_golden_run.py:49: PytestUnknownMarkWarning: Unknown pytest.mark.integrity - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = [pytest.mark.integrity]
+
+tests/test_golden_run.py:424
+  /home/user/papertradeclone/tests/test_golden_run.py:424: PytestUnknownMarkWarning: Unknown pytest.mark.slow - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.slow
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+652 passed, 4 skipped, 1 deselected, 45 warnings in 44.93s
